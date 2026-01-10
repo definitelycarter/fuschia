@@ -1,0 +1,12 @@
+[package]
+name = "fuscia"
+edition.workspace = true
+version.workspace = true
+
+[workspace]
+package.edition = "2024"
+package.version = "0.0.1-alpha.0"
+members = [
+]
+
+[dependencies]
