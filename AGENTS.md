@@ -1,11 +1,17 @@
 # Fuscia
 
-Fuscia is a Rust workspace for building value-based priority (VBP) systems.
+Fuscia is a workflow engine similar to n8n, built on WebAssembly components using WIT (WebAssembly Interface Types). Each workflow node is a Wasm component with explicitly defined capabilities.
+
+## Documentation
+
+- [docs/DESIGN.md](./docs/DESIGN.md) - Architecture and design decisions
+- [docs/USE_CASES.md](./docs/USE_CASES.md) - Example workflows with diagrams and JSON definitions
 
 ## Project Structure
 
 - `src/` - Main library crate
 - `crates/` - Workspace member crates
+- `docs/` - Design documentation
 
 ## Development
 
