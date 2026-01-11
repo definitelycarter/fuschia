@@ -7,6 +7,6 @@ version.workspace = true
 package.edition = "2024"
 package.version = "0.0.1-alpha.0"
 members = ["crates/fuscia-artifact","crates/fuscia-config"
-, "crates/fuscia-store"]
+, "crates/fuscia-store", "crates/fuscia-workflow"]
 
 [dependencies]

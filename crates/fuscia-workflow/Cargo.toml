@@ -1,0 +1,11 @@
+[package]
+name = "fuscia-workflow"
+edition.workspace = true
+version.workspace = true
+description = "Locked/resolved workflow representation for Fuscia"
+
+[dependencies]
+fuscia-config = { path = "../fuscia-config" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"

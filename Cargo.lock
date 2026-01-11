@@ -322,6 +322,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuscia-workflow"
+version = "0.0.1-alpha.0"
+dependencies = [
+ "fuscia-config",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "futures"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"

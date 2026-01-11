@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::component::ComponentSource;
 use crate::edge::Edge;
 use crate::enums::{ExecutionMode, JoinStrategy, LoopFailureMode};
 use crate::input::InputValue;
@@ -26,7 +27,7 @@ pub struct NodeDef {
 pub enum NodeType {
   #[serde(rename = "component")]
   Component {
-    component: String,
+    source: ComponentSource,
   },
   Join {
     join_strategy: JoinStrategy,

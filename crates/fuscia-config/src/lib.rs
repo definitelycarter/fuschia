@@ -11,12 +11,14 @@
 //! The engine takes these configuration types, validates them against component
 //! schemas, and resolves them into runtime structures for execution.
 
+mod component;
 mod edge;
 mod enums;
 mod input;
 mod node;
 mod workflow;
 
+pub use component::ComponentSource;
 pub use edge::Edge;
 pub use enums::{ExecutionMode, JoinStrategy, LoopFailureMode, RetryBackoff};
 pub use input::InputValue;
