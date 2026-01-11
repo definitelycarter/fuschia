@@ -14,58 +14,49 @@ mod types;
 pub use sqlite::SqliteStore;
 pub use types::{ExecutionStatus, Task, TaskStatus, WorkflowExecution};
 
-/// Storage trait for workflow executions and tasks.
-pub trait Store {
-  /// Error type for storage operations.
-  type Error;
+use async_trait::async_trait;
 
+/// Error type for storage operations.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+  /// The requested record was not found.
+  #[error("not found: {0}")]
+  NotFound(String),
+
+  /// A database error occurred.
+  #[error("database error: {0}")]
+  Database(#[from] sqlx::Error),
+}
+
+/// Storage trait for workflow executions and tasks.
+#[async_trait]
+pub trait Store: Send + Sync {
   /// Create a new workflow execution.
-  fn create_execution(
-    &self,
-    execution: &WorkflowExecution,
-  ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send;
+  async fn create_execution(&self, execution: &WorkflowExecution) -> Result<(), Error>;
 
   /// Get a workflow execution by ID.
-  fn get_execution(
-    &self,
-    execution_id: &str,
-  ) -> impl std::future::Future<Output = Result<WorkflowExecution, Self::Error>> + Send;
+  async fn get_execution(&self, execution_id: &str) -> Result<WorkflowExecution, Error>;
 
   /// Update the status of a workflow execution.
-  fn update_execution_status(
+  async fn update_execution_status(
     &self,
     execution_id: &str,
     status: ExecutionStatus,
     completed_at: Option<chrono::DateTime<chrono::Utc>>,
-  ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send;
+  ) -> Result<(), Error>;
 
   /// List executions for a workflow.
-  fn list_executions(
-    &self,
-    workflow_id: &str,
-  ) -> impl std::future::Future<Output = Result<Vec<WorkflowExecution>, Self::Error>> + Send;
+  async fn list_executions(&self, workflow_id: &str) -> Result<Vec<WorkflowExecution>, Error>;
 
   /// Create a new task.
-  fn create_task(
-    &self,
-    task: &Task,
-  ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send;
+  async fn create_task(&self, task: &Task) -> Result<(), Error>;
 
   /// Get a task by ID.
-  fn get_task(
-    &self,
-    task_id: &str,
-  ) -> impl std::future::Future<Output = Result<Task, Self::Error>> + Send;
+  async fn get_task(&self, task_id: &str) -> Result<Task, Error>;
 
   /// Update a task.
-  fn update_task(
-    &self,
-    task: &Task,
-  ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send;
+  async fn update_task(&self, task: &Task) -> Result<(), Error>;
 
   /// List tasks for an execution.
-  fn list_tasks(
-    &self,
-    execution_id: &str,
-  ) -> impl std::future::Future<Output = Result<Vec<Task>, Self::Error>> + Send;
+  async fn list_tasks(&self, execution_id: &str) -> Result<Vec<Task>, Error>;
 }

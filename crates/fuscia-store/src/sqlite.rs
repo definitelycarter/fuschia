@@ -1,7 +1,8 @@
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
 
-use crate::{ExecutionStatus, Store, Task, WorkflowExecution};
+use crate::{Error, ExecutionStatus, Store, Task, WorkflowExecution};
 
 /// SQLite-based store implementation.
 pub struct SqliteStore {
@@ -20,10 +21,16 @@ impl SqliteStore {
   }
 }
 
-impl Store for SqliteStore {
-  type Error = sqlx::Error;
+fn map_row_not_found(e: sqlx::Error, entity: &str) -> Error {
+  match e {
+    sqlx::Error::RowNotFound => Error::NotFound(entity.to_string()),
+    other => Error::Database(other),
+  }
+}
 
-  async fn create_execution(&self, execution: &WorkflowExecution) -> Result<(), Self::Error> {
+#[async_trait]
+impl Store for SqliteStore {
+  async fn create_execution(&self, execution: &WorkflowExecution) -> Result<(), Error> {
     sqlx::query(
             r#"
             INSERT INTO workflow_executions (execution_id, workflow_id, status, config, started_at, completed_at)
@@ -42,7 +49,7 @@ impl Store for SqliteStore {
     Ok(())
   }
 
-  async fn get_execution(&self, execution_id: &str) -> Result<WorkflowExecution, Self::Error> {
+  async fn get_execution(&self, execution_id: &str) -> Result<WorkflowExecution, Error> {
     sqlx::query_as(
       r#"
             SELECT execution_id, workflow_id, status, config, started_at, completed_at
@@ -53,6 +60,7 @@ impl Store for SqliteStore {
     .bind(execution_id)
     .fetch_one(&self.pool)
     .await
+    .map_err(|e| map_row_not_found(e, execution_id))
   }
 
   async fn update_execution_status(
@@ -60,7 +68,7 @@ impl Store for SqliteStore {
     execution_id: &str,
     status: ExecutionStatus,
     completed_at: Option<DateTime<Utc>>,
-  ) -> Result<(), Self::Error> {
+  ) -> Result<(), Error> {
     sqlx::query(
       r#"
             UPDATE workflow_executions
@@ -77,10 +85,7 @@ impl Store for SqliteStore {
     Ok(())
   }
 
-  async fn list_executions(
-    &self,
-    workflow_id: &str,
-  ) -> Result<Vec<WorkflowExecution>, Self::Error> {
+  async fn list_executions(&self, workflow_id: &str) -> Result<Vec<WorkflowExecution>, Error> {
     sqlx::query_as(
       r#"
             SELECT execution_id, workflow_id, status, config, started_at, completed_at
@@ -92,9 +97,10 @@ impl Store for SqliteStore {
     .bind(workflow_id)
     .fetch_all(&self.pool)
     .await
+    .map_err(Error::Database)
   }
 
-  async fn create_task(&self, task: &Task) -> Result<(), Self::Error> {
+  async fn create_task(&self, task: &Task) -> Result<(), Error> {
     sqlx::query(
             r#"
             INSERT INTO workflow_tasks (task_id, execution_id, node_id, status, attempt, started_at, completed_at, output, error)
@@ -116,7 +122,7 @@ impl Store for SqliteStore {
     Ok(())
   }
 
-  async fn get_task(&self, task_id: &str) -> Result<Task, Self::Error> {
+  async fn get_task(&self, task_id: &str) -> Result<Task, Error> {
     sqlx::query_as(
             r#"
             SELECT task_id, execution_id, node_id, status, attempt, started_at, completed_at, output, error
@@ -127,9 +133,10 @@ impl Store for SqliteStore {
         .bind(task_id)
         .fetch_one(&self.pool)
         .await
+        .map_err(|e| map_row_not_found(e, task_id))
   }
 
-  async fn update_task(&self, task: &Task) -> Result<(), Self::Error> {
+  async fn update_task(&self, task: &Task) -> Result<(), Error> {
     sqlx::query(
       r#"
             UPDATE workflow_tasks
@@ -149,7 +156,7 @@ impl Store for SqliteStore {
     Ok(())
   }
 
-  async fn list_tasks(&self, execution_id: &str) -> Result<Vec<Task>, Self::Error> {
+  async fn list_tasks(&self, execution_id: &str) -> Result<Vec<Task>, Error> {
     sqlx::query_as(
             r#"
             SELECT task_id, execution_id, node_id, status, attempt, started_at, completed_at, output, error
@@ -161,5 +168,6 @@ impl Store for SqliteStore {
         .bind(execution_id)
         .fetch_all(&self.pool)
         .await
+        .map_err(Error::Database)
   }
 }

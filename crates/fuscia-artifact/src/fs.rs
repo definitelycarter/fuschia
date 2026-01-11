@@ -1,13 +1,12 @@
-use std::io;
 use std::path::PathBuf;
 
-use bytes::Bytes;
-use futures::{Stream, StreamExt};
+use async_trait::async_trait;
+use futures::StreamExt;
 use tokio::fs::{self, File};
 use tokio::io::AsyncWriteExt;
 use tokio_util::io::ReaderStream;
 
-use crate::Store;
+use crate::{ByteStream, Error, Store};
 
 /// Filesystem-based artifact store.
 ///
@@ -30,20 +29,22 @@ impl FsStore {
   }
 }
 
+#[async_trait]
 impl Store for FsStore {
-  type Error = io::Error;
-  type GetStream = ReaderStream<File>;
-
-  async fn get(&self, key: &str) -> Result<Self::GetStream, Self::Error> {
+  async fn get(&self, key: &str) -> Result<ByteStream, Error> {
     let path = self.key_to_path(key);
-    let file = File::open(path).await?;
-    Ok(ReaderStream::new(file))
+    let file = File::open(&path).await.map_err(|e| {
+      if e.kind() == std::io::ErrorKind::NotFound {
+        Error::NotFound(key.to_string())
+      } else {
+        Error::Io(e)
+      }
+    })?;
+    let stream = ReaderStream::new(file).map(|r| r.map_err(Error::Io));
+    Ok(Box::pin(stream))
   }
 
-  async fn put<S>(&self, key: &str, data: S, _content_type: &str) -> Result<(), Self::Error>
-  where
-    S: Stream<Item = Result<Bytes, Self::Error>> + Send,
-  {
+  async fn put(&self, key: &str, data: ByteStream, _content_type: &str) -> Result<(), Error> {
     let path = self.key_to_path(key);
 
     if let Some(parent) = path.parent() {
@@ -62,8 +63,14 @@ impl Store for FsStore {
     Ok(())
   }
 
-  async fn delete(&self, key: &str) -> Result<(), Self::Error> {
+  async fn delete(&self, key: &str) -> Result<(), Error> {
     let path = self.key_to_path(key);
-    fs::remove_file(path).await
+    fs::remove_file(&path).await.map_err(|e| {
+      if e.kind() == std::io::ErrorKind::NotFound {
+        Error::NotFound(key.to_string())
+      } else {
+        Error::Io(e)
+      }
+    })
   }
 }

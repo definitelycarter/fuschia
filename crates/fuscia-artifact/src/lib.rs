@@ -14,40 +14,42 @@ mod fs;
 
 pub use fs::FsStore;
 
+use async_trait::async_trait;
 use bytes::Bytes;
 use futures::Stream;
+use std::pin::Pin;
+
+/// A boxed stream of bytes for artifact data.
+pub type ByteStream = Pin<Box<dyn Stream<Item = Result<Bytes, Error>> + Send>>;
+
+/// Error type for artifact storage operations.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+  /// The requested artifact was not found.
+  #[error("artifact not found: {0}")]
+  NotFound(String),
+
+  /// An I/O error occurred.
+  #[error("io error: {0}")]
+  Io(#[from] std::io::Error),
+}
 
 /// Artifact storage trait.
 ///
 /// Implementations provide the actual storage backend (filesystem, S3, etc.).
 /// The engine is responsible for translating artifact IDs to storage keys.
-pub trait Store {
-  /// Error type for storage operations.
-  type Error;
-
-  /// Stream type returned by `get`.
-  type GetStream: Stream<Item = Result<Bytes, Self::Error>>;
-
+#[async_trait]
+pub trait Store: Send + Sync {
   /// Retrieve an artifact by key.
   ///
   /// Returns a stream of bytes for efficient handling of large files.
-  fn get(
-    &self,
-    key: &str,
-  ) -> impl std::future::Future<Output = Result<Self::GetStream, Self::Error>> + Send;
+  async fn get(&self, key: &str) -> Result<ByteStream, Error>;
 
   /// Store an artifact.
   ///
   /// Accepts a stream of bytes for efficient handling of large files.
-  fn put<S>(
-    &self,
-    key: &str,
-    data: S,
-    content_type: &str,
-  ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send
-  where
-    S: Stream<Item = Result<Bytes, Self::Error>> + Send;
+  async fn put(&self, key: &str, data: ByteStream, content_type: &str) -> Result<(), Error>;
 
   /// Delete an artifact by key.
-  fn delete(&self, key: &str) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send;
+  async fn delete(&self, key: &str) -> Result<(), Error>;
 }
