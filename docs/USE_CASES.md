@@ -39,11 +39,7 @@ This is the simplest workflow pattern: a sequence of nodes where each node's out
       "component": "json-transform",
       "inputs": {
         "data": "$.fetch_data.output.body",
-        "mapping": {
-          "id": "$.data.identifier",
-          "name": "$.data.full_name",
-          "email": "$.data.contact.email"
-        }
+        "expression": "{ id: .identifier, name: .full_name, email: .contact.email }"
       }
     },
     {

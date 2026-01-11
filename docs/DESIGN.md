@@ -65,6 +65,59 @@ enum JoinStrategy {
 
 Both strategies wait for all branches to complete before evaluating. Built-in strategies control **whether to proceed**. The join node must still produce a single output envelope for downstream nodes, either via the strategy's default behavior or custom Wasm logic.
 
+## Component Schema
+
+Each Wasm component declares its input and output schemas using JSON Schema. This enables:
+
+- **Validation** - Verify workflow definitions at design time
+- **Dynamic UI** - Generate form fields for node configuration
+- **Documentation** - Self-describing components
+
+### Schema Definition
+
+Components define schemas as part of their metadata:
+
+```json
+{
+  "component": "http-fetch",
+  "input_schema": {
+    "type": "object",
+    "required": ["url"],
+    "properties": {
+      "url": { "type": "string", "format": "uri" },
+      "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE"] },
+      "headers": { "type": "object" },
+      "body": { "type": "string" }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "status": { "type": "integer" },
+      "headers": { "type": "object" },
+      "body": { "type": "string" }
+    }
+  }
+}
+```
+
+### Workflow Node Inputs
+
+Workflow nodes reference a component and provide input mappings. The schema is not repeated - it's defined by the component:
+
+```json
+{
+  "node_id": "fetch_data",
+  "component": "http-fetch",
+  "inputs": {
+    "url": "https://api.example.com/data",
+    "method": "GET"
+  }
+}
+```
+
+The engine validates `inputs` against the component's `input_schema` at workflow definition time.
+
 ### Loop Nodes
 
 Loop nodes are container nodes that iterate over a collection and execute nested nodes for each element.

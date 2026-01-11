@@ -11,6 +11,10 @@ Fuscia is a workflow engine similar to n8n, built on WebAssembly components usin
 
 - `src/` - Main library crate
 - `crates/` - Workspace member crates
+  - `fuscia-config` - Serializable workflow configuration types (workflow definitions, nodes, edges). Represents workflows before they are loaded and resolved by the engine. Can be deserialized from JSON files or database storage.
+  - `fuscia-artifact` - Artifact storage trait and implementations. Provides async streaming interface for storing/retrieving binary artifacts. Includes `FsStore` for local filesystem storage.
+  - `fuscia-store` - Workflow execution and task storage trait and implementations. Stores execution state, task records, and snapshots of workflow configs. Includes `SqliteStore` implementation.
+- `migrations/` - SQLite database migrations (sqlx)
 - `docs/` - Design documentation
 
 ## Development

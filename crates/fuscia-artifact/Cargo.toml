@@ -1,0 +1,11 @@
+[package]
+name = "fuscia-artifact"
+edition.workspace = true
+version.workspace = true
+description = "Artifact storage trait and implementations for Fuscia"
+
+[dependencies]
+bytes = "1"
+futures = "0.3"
+tokio = { version = "1", features = ["fs", "io-util"] }
+tokio-util = { version = "0.7", features = ["io"] }
