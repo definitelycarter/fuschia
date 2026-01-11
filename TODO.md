@@ -40,3 +40,4 @@
 - Should `fuscia-resolver` and `fuscia-component-cache` be separate crates or combined?
 - Where does input path expression parsing live? (fuscia-workflow or fuscia-runtime)
 - WIT interface design for components (deferred for now)
+- Should `Graph::downstream`/`upstream` return `Option<&[String]>` instead of `&[]` for missing nodes?

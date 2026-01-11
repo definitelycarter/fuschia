@@ -22,11 +22,23 @@ pub enum NodeType {
   Loop(LockedLoop),
 }
 
+/// A reference to content (e.g., a Wasm component).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContentRef {
+  /// URI where the content can be fetched (file://, https://, oci://, etc.)
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub source: Option<String>,
+
+  /// SHA-256 digest of the content (sha256:abc123...)
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub digest: Option<String>,
+}
+
 /// A component that has been resolved and locked.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LockedComponent {
-  /// Content hash of the Wasm bytes (sha256:...).
-  pub digest: String,
+  /// Reference to the Wasm component bytes.
+  pub content: ContentRef,
 }
 
 /// A loop node with its nested workflow.
