@@ -2,17 +2,32 @@
 
 use fuscia_host::{HostState, InMemoryKvStore, KvStore};
 use wasmtime::component::HasData;
+use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 /// Host state wrapper for task component execution.
 /// This wraps HostState to implement HasData in this crate.
 pub struct TaskHostState {
   pub inner: HostState<InMemoryKvStore>,
+  pub wasi: WasiCtx,
+  pub table: ResourceTable,
 }
 
 impl TaskHostState {
   pub fn new(execution_id: String, node_id: String) -> Self {
+    let wasi = WasiCtxBuilder::new().build();
     Self {
       inner: HostState::new(execution_id, node_id, InMemoryKvStore::new()),
+      wasi,
+      table: ResourceTable::new(),
+    }
+  }
+}
+
+impl WasiView for TaskHostState {
+  fn ctx(&mut self) -> WasiCtxView<'_> {
+    WasiCtxView {
+      ctx: &mut self.wasi,
+      table: &mut self.table,
     }
   }
 }

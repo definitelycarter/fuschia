@@ -5,6 +5,7 @@ use std::path::Path;
 use fuscia_host::HostError;
 use wasmtime::component::Component;
 use wasmtime::{Engine, Store};
+use wasmtime_wasi::p2::add_to_linker_async;
 
 use crate::bindings::{Context, Output, TaskComponent, TaskHostState};
 
@@ -33,12 +34,18 @@ pub async fn execute_task(
 ) -> Result<TaskResult, HostError> {
   let mut store = Store::new(engine, state);
 
-  if let Some(deadline) = epoch_deadline {
-    store.set_epoch_deadline(deadline);
-  }
+  // Set epoch deadline - use provided value or a high default to avoid immediate interrupt
+  // when epoch interruption is enabled on the engine
+  let deadline = epoch_deadline.unwrap_or(u64::MAX);
+  store.set_epoch_deadline(deadline);
 
   // Create linker and add host imports
   let mut linker = wasmtime::component::Linker::<TaskHostState>::new(engine);
+
+  // Add WASI imports
+  add_to_linker_async(&mut linker)?;
+
+  // Add fuscia host imports
   TaskComponent::add_to_linker::<TaskHostState, TaskHostState>(&mut linker, |state| state)?;
 
   // Instantiate the component

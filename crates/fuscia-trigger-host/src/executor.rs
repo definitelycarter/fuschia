@@ -5,6 +5,7 @@ use std::path::Path;
 use fuscia_host::HostError;
 use wasmtime::component::Component;
 use wasmtime::{Engine, Store};
+use wasmtime_wasi::p2::add_to_linker_async;
 
 use crate::bindings::{Event, Status, TriggerComponent, TriggerHostState};
 
@@ -31,12 +32,18 @@ pub async fn execute_trigger(
 ) -> Result<TriggerResult, HostError> {
   let mut store = Store::new(engine, state);
 
-  if let Some(deadline) = epoch_deadline {
-    store.set_epoch_deadline(deadline);
-  }
+  // Set epoch deadline - use provided value or a high default to avoid immediate interrupt
+  // when epoch interruption is enabled on the engine
+  let deadline = epoch_deadline.unwrap_or(u64::MAX);
+  store.set_epoch_deadline(deadline);
 
   // Create linker and add host imports
   let mut linker = wasmtime::component::Linker::<TriggerHostState>::new(engine);
+
+  // Add WASI imports
+  add_to_linker_async(&mut linker)?;
+
+  // Add fuscia host imports
   TriggerComponent::add_to_linker::<TriggerHostState, TriggerHostState>(&mut linker, |state| {
     state
   })?;

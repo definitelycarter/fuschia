@@ -829,7 +829,9 @@ version = "0.0.1-alpha.0"
 dependencies = [
  "fuscia-host",
  "futures",
+ "serde_json",
  "thiserror 2.0.17",
+ "tokio",
  "tracing",
  "wasmtime",
  "wasmtime-wasi",
@@ -851,7 +853,9 @@ version = "0.0.1-alpha.0"
 dependencies = [
  "fuscia-host",
  "futures",
+ "serde_json",
  "thiserror 2.0.17",
+ "tokio",
  "tracing",
  "wasmtime",
  "wasmtime-wasi",

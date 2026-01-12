@@ -7,5 +7,5 @@
 mod bindings;
 mod executor;
 
-pub use bindings::{Event, Status, TriggerHostState};
+pub use bindings::{Event, Status, TriggerHostState, WebhookRequest};
 pub use executor::{TriggerResult, execute_trigger, load_component};
