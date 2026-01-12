@@ -53,9 +53,11 @@ pub struct TaskExport {
 }
 
 /// The type of trigger and its configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TriggerType {
+  /// Manual trigger - user-initiated via CLI or UI
+  Manual,
   /// Poll-based trigger that fires on a schedule
   Poll {
     /// Polling interval in milliseconds

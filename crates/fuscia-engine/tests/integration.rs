@@ -53,9 +53,9 @@ fn create_manual_trigger(node_id: &str) -> Node {
   Node {
     node_id: node_id.to_string(),
     node_type: NodeType::Trigger(LockedTrigger {
-      name: "manual".to_string(),
-      version: "1.0.0".to_string(),
-      digest: "sha256:manual".to_string(),
+      trigger_type: fuscia_component::TriggerType::Manual,
+      component: None,
+      trigger_name: None,
     }),
     inputs: HashMap::new(),
     timeout_ms: None,

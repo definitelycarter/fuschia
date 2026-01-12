@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use fuscia_component::TriggerType;
 use fuscia_config::{ExecutionMode, InputValue, JoinStrategy, LoopFailureMode};
 use serde::{Deserialize, Serialize};
 
@@ -28,17 +29,20 @@ pub enum NodeType {
   Loop(LockedLoop),
 }
 
-/// A trigger component that has been resolved and locked.
+/// A locked trigger that initiates workflow execution.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LockedTrigger {
-  /// Component name (e.g., "my-org/webhook-trigger")
-  pub name: String,
+  /// The type of trigger (manual, poll, webhook)
+  pub trigger_type: TriggerType,
 
-  /// Component version (e.g., "1.0.0")
-  pub version: String,
+  /// Optional component for custom trigger processing.
+  /// None for basic built-in triggers (manual, simple webhook/poll).
+  /// Some for component-authored triggers with validation/transformation logic.
+  pub component: Option<LockedComponent>,
 
-  /// SHA-256 digest of the wasm binary (for verification)
-  pub digest: String,
+  /// Name of the trigger export within the component.
+  /// Required if component is Some.
+  pub trigger_name: Option<String>,
 }
 
 /// A component that has been resolved and locked.
