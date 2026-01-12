@@ -824,6 +824,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuscia-task-host"
+version = "0.0.1-alpha.0"
+dependencies = [
+ "fuscia-host",
+ "futures",
+ "thiserror 2.0.17",
+ "tracing",
+ "wasmtime",
+ "wasmtime-wasi",
+]
+
+[[package]]
 name = "fuscia-trigger"
 version = "0.0.1-alpha.0"
 dependencies = [

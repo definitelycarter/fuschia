@@ -14,6 +14,7 @@ members = [
   "crates/fuscia-resolver",
   "crates/fuscia-store",
   "crates/fuscia-task",
+  "crates/fuscia-task-host",
   "crates/fuscia-trigger",
   "crates/fuscia-workflow",
   "crates/fuscia-world",

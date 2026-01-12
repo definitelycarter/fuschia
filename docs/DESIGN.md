@@ -630,7 +630,7 @@ Components have access to these host-provided imports:
 | `fuscia:kv/kv` | Per-execution | Key-value store isolated to the workflow execution. Pluggable via `KvStore` trait (InMemoryKvStore for local, Redis for production). |
 | `fuscia:config/config` | Per-component | Configuration values from the workflow node definition |
 | `fuscia:log/log` | Per-execution | Logging routed to OpenTelemetry with execution context |
-| `wasi:http/outgoing-handler` | Per-component | HTTP requests filtered by `allowed_hosts` from manifest |
+| `wasi:http/outgoing-handler` | Per-component | HTTP requests filtered by `allowed_hosts` from manifest. **Not yet implemented** - requires wasmtime-wasi-http integration. |
 
 ### Error Handling
 

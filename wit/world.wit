@@ -1,11 +1,12 @@
 package fuscia:platform@0.1.0;
 
 /// Base platform world with common imports for all components.
+/// Note: HTTP support (wasi:http/outgoing-handler) will be added later
+/// once WASI integration is complete.
 world platform {
   import fuscia:kv/kv@0.1.0;
   import fuscia:config/config@0.1.0;
   import fuscia:log/log@0.1.0;
-  import wasi:http/outgoing-handler@0.2.0;
 }
 
 /// World for task components.
