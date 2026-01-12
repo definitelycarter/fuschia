@@ -16,8 +16,8 @@
 | Crate | Description | Priority |
 |-------|-------------|----------|
 | `fuscia-trigger` | Trigger definitions and runtime (cron, webhook, mqtt, manual) | High |
-| `fuscia-task` | Task execution types (context, output, path expressions, input resolution) | High |
-| `fuscia-executor` | Task executors: wasm components (wasmtime) + built-ins (http, delay, etc.) | High |
+| `fuscia-task` | Task types, context, dispatch, built-in executors (http, delay), input resolution | High |
+| `fuscia-host` | Wasmtime component hosting (load, instantiate, execute wasm components) | High |
 | `fuscia-engine` | Workflow orchestration, scheduling, graph execution | High |
 | `fuscia-cli` | Command-line interface | Medium |
 
@@ -34,15 +34,15 @@
 | Feature | Description | Notes |
 |---------|-------------|-------|
 | Workflow triggers | Cron, webhook, mqtt, manual triggers to start workflows | Needs `fuscia-trigger` |
-| Task execution types | TaskContext, TaskOutput, path expression parsing | Needs `fuscia-task` |
-| Wasm execution | Load component from registry, call via WIT | Needs `fuscia-executor` |
-| Built-in executors | Native http, delay, etc. executors | Needs `fuscia-executor` |
+| Task execution types | Task enum, TaskContext, TaskOutput | Needs `fuscia-task` |
+| Built-in task executors | HTTP requests, delay, etc. | Needs `fuscia-task` |
 | Input path resolution | Resolve `$.node.output.field` expressions at runtime | Needs `fuscia-task` |
+| Wasm component hosting | Load, instantiate, execute wasm with wasmtime | Needs `fuscia-host` |
+| Timeout enforcement | Kill Wasm execution via epoch interruption | Needs `fuscia-host` |
 | Parallel branch execution | Spawn concurrent tasks for independent branches | Needs `fuscia-engine` |
 | Join node handling | Wait for branches, apply strategy (All/Any) | Needs `fuscia-engine` |
 | Loop execution | Iterate over collection, execute nested workflow | Needs `fuscia-engine` |
 | Retry logic | Retry failed nodes per policy | Needs `fuscia-engine` |
-| Timeout enforcement | Kill Wasm execution via epoch interruption | Needs `fuscia-executor` |
 | Observability | OpenTelemetry tracing to Jaeger | Needs integration across crates |
 | Component packaging | Bundle manifest + wasm + readme + assets into .fcpkg | Needs `fuscia-cli` |
 
