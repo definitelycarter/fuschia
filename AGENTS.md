@@ -20,6 +20,10 @@ Fuscia is a workflow engine similar to n8n, built on WebAssembly components usin
   - `fuscia-resolver` - Transforms `WorkflowDef` (config) into `Workflow` (locked). Validates graph is a DAG (no cycles), resolves component references via the registry, and handles recursive loop node resolution.
   - `fuscia-task` - Task execution types. Defines `Task` enum (Http, Component), `TaskContext` with pre-resolved inputs (execution_id, node_id, task_id, inputs), and `TaskOutput` with output JSON and artifact references. Includes HTTP executor implementation.
   - `fuscia-trigger` - Trigger types for workflow initiation. Defines `Trigger` enum (Manual, Component) and `TriggerEvent` for starting workflow executions. Trigger type (poll/webhook) and config (interval, method) are defined in the component manifest.
+  - `fuscia-host` - Shared host state for Wasm component execution. Provides `HostState<K>` with execution context (execution_id, node_id), KV store trait, and config access. Used by both task and trigger hosts.
+  - `fuscia-task-host` - Task component execution. Loads, instantiates, and executes task Wasm components. Implements host imports (kv, config, log) via `TaskHostState`. Supports epoch-based timeouts.
+  - `fuscia-trigger-host` - Trigger component execution. Loads and executes trigger Wasm components. Implements host imports via `TriggerHostState`. Returns trigger status (completed/pending).
+  - `fuscia-engine` - Workflow execution engine. Contains `WorkflowEngine` for graph traversal and task execution, `WorkflowRunner` for channel-based triggering, and minijinja-based input resolution. Executes nodes in parallel when dependencies are satisfied. Supports cancellation via `CancellationToken`.
   - `fuscia-world` - Wasmtime bindgen host world. Uses `wasmtime::component::bindgen!` to generate Rust bindings from WIT interfaces. Defines the host world that combines all imports (kv, config, log, http) and exports (task, trigger).
 - `wit/` - WebAssembly Interface Type (WIT) definitions
   - `world.wit` - Platform world with shared imports, plus task-component and trigger-component worlds

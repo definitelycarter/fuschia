@@ -14,6 +14,7 @@ members = [
   "crates/fuscia-artifact",
   "crates/fuscia-component",
   "crates/fuscia-config",
+  "crates/fuscia-engine",
   "crates/fuscia-host",
   "crates/fuscia-resolver",
   "crates/fuscia-store",
