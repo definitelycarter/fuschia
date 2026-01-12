@@ -27,29 +27,22 @@ pub enum Trigger {
   Component(ComponentTrigger),
 }
 
-/// Manual trigger configuration.
+/// Manual trigger - workflow is started by user action.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ManualTrigger {
-  /// Optional schema for manual trigger inputs
-  #[serde(default)]
-  pub schema: Option<serde_json::Value>,
-}
+pub struct ManualTrigger {}
 
-/// Webhook trigger configuration.
+/// Webhook trigger - workflow is started by HTTP request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebhookTrigger {
   /// HTTP method to accept (GET, POST, etc.)
   pub method: String,
-
-  /// Path for the webhook endpoint
-  pub path: String,
 
   /// Optional schema for validating webhook payload
   #[serde(default)]
   pub schema: Option<serde_json::Value>,
 }
 
-/// Component-based trigger configuration.
+/// Component trigger - wasm component that can register webhooks or poll.
 #[derive(Debug, Clone)]
 pub struct ComponentTrigger {
   /// The installed component that implements the trigger
@@ -58,8 +51,8 @@ pub struct ComponentTrigger {
   /// Name of the trigger export within the component
   pub trigger_name: String,
 
-  /// Configuration passed to the trigger component
-  pub config: serde_json::Value,
+  /// Input values for the trigger (conforms to the trigger's schema)
+  pub inputs: serde_json::Value,
 }
 
 /// Event emitted by a trigger to start workflow execution.
@@ -84,7 +77,7 @@ mod tests {
 
   #[test]
   fn test_manual_trigger() {
-    let trigger = Trigger::Manual(ManualTrigger { schema: None });
+    let trigger = Trigger::Manual(ManualTrigger {});
     assert!(matches!(trigger, Trigger::Manual(_)));
   }
 
@@ -92,7 +85,6 @@ mod tests {
   fn test_webhook_trigger() {
     let trigger = Trigger::Webhook(WebhookTrigger {
       method: "POST".to_string(),
-      path: "/webhooks/my-workflow".to_string(),
       schema: None,
     });
     assert!(matches!(trigger, Trigger::Webhook(_)));
