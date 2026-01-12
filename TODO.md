@@ -31,9 +31,13 @@
 | Task types | Http and Component task variants | `fuscia-task` |
 | Task context | Pre-resolved inputs passed to task execution | `fuscia-task` |
 | Http executor | Built-in HTTP request executor | `fuscia-task` |
-| Trigger types | Manual, Webhook, Component trigger variants | `fuscia-trigger` |
+| Trigger types | Manual and Component trigger variants | `fuscia-trigger` |
 | Trigger events | TriggerEvent for workflow initiation | `fuscia-trigger` |
 | Component capabilities | allowed_hosts and allowed_paths for security sandboxing | `fuscia-component` |
+| TriggerType in manifest | Poll (interval_ms) and Webhook (method) defined in component manifest | `fuscia-component` |
+| WIT task interface | Task execute function with context (execution-id, node-id, task-id) | `wit/task.wit` |
+| WIT trigger interface | Trigger handle function with event variants (poll, webhook) | `wit/trigger.wit` |
+| WIT host imports | Key-value store and config imports for components | `wit/kv.wit`, `wit/config.wit` |
 
 ## Features - Outstanding
 
@@ -96,8 +100,8 @@
 | Question | Context |
 |----------|---------|
 | Path expression parsing location | Should live in `fuscia-config` (parse at config time) or `fuscia-task` (parse at execution)? |
-| WIT interface design | Deferred - need to design component interface for Wasm modules |
 | Graph method return types | Should `downstream()`/`upstream()` return `Option<&[String]>` instead of `&[]`? |
 | Loop item injection | How does `{ "item": {...}, "index": 0 }` get passed to nested workflow inputs? |
 | Join node output shape | What's the output - aggregated map of branch outputs? Pass-through? |
 | WorkflowExecution.config type | Should store original `WorkflowDef` or locked `Workflow` for audit trail? |
+| KV store value types | Should kv.wit support complex types (json, number, bool, object) or just strings? |
