@@ -55,7 +55,6 @@ fn create_manual_trigger(node_id: &str) -> Node {
     node_type: NodeType::Trigger(LockedTrigger {
       trigger_type: fuscia_component::TriggerType::Manual,
       component: None,
-      trigger_name: None,
     }),
     inputs: HashMap::new(),
     timeout_ms: None,

@@ -38,11 +38,16 @@ pub struct LockedTrigger {
   /// Optional component for custom trigger processing.
   /// None for basic built-in triggers (manual, simple webhook/poll).
   /// Some for component-authored triggers with validation/transformation logic.
-  pub component: Option<LockedComponent>,
+  pub component: Option<LockedTriggerComponent>,
+}
 
-  /// Name of the trigger export within the component.
-  /// Required if component is Some.
-  pub trigger_name: Option<String>,
+/// A locked trigger component with its export name.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LockedTriggerComponent {
+  /// The locked component that implements the trigger
+  pub component: LockedComponent,
+  /// Name of the trigger export within the component (e.g., "row-added")
+  pub trigger_name: String,
 }
 
 /// A component that has been resolved and locked.
