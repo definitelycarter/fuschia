@@ -64,6 +64,9 @@ impl WorkflowEngine {
   }
 
   /// Execute a workflow with the given trigger payload.
+  ///
+  /// The `trigger_node_id` specifies which trigger node initiated this execution.
+  /// The payload is assigned to that trigger node and flows downstream.
   pub async fn execute(
     &self,
     workflow: &Workflow,
@@ -73,29 +76,34 @@ impl WorkflowEngine {
     let execution_id = uuid::Uuid::new_v4().to_string();
     let graph = workflow.graph();
 
+    // Validate the workflow graph
+    self.validate_workflow(workflow)?;
+
     // Completed node results
     let completed: Arc<Mutex<HashMap<String, NodeResult>>> = Arc::new(Mutex::new(HashMap::new()));
 
-    // Entry point gets the trigger payload as its data.
-    // The first node is always the trigger node.
-    let entry_points = graph.entry_points();
-    if entry_points.is_empty() {
+    // Find trigger nodes and store the payload for each
+    // For now, all triggers receive the same payload (in the future, we may
+    // want to specify which trigger initiated the execution)
+    let trigger_nodes = self.find_trigger_nodes(workflow);
+    if trigger_nodes.is_empty() {
       return Err(ExecutionError::InvalidGraph {
-        message: "workflow has no entry points".to_string(),
+        message: "workflow has no trigger nodes".to_string(),
       });
     }
 
-    // Store the trigger payload as the entry point's result
-    let entry_id = &entry_points[0];
+    // Store the trigger payload for each trigger node
     {
       let mut completed_guard = completed.lock().await;
-      completed_guard.insert(
-        entry_id.clone(),
-        NodeResult {
-          node_id: entry_id.clone(),
-          data: payload,
-        },
-      );
+      for trigger_id in &trigger_nodes {
+        completed_guard.insert(
+          trigger_id.clone(),
+          NodeResult {
+            node_id: trigger_id.clone(),
+            data: payload.clone(),
+          },
+        );
+      }
     }
 
     // Find initially ready nodes (downstream of entry)
@@ -128,6 +136,15 @@ impl WorkflowEngine {
 
           // Get component info and compile
           let component_result = match &node.node_type {
+            NodeType::Trigger(_) => {
+              // Trigger nodes should already be completed with the payload
+              // This case shouldn't be reached in normal execution
+              return tokio::spawn(async move {
+                Err(ExecutionError::InvalidGraph {
+                  message: format!("trigger node '{}' should not be in ready queue", node_id),
+                })
+              });
+            }
             NodeType::Component(locked) => {
               let key = ComponentKey::new(&locked.name, &locked.version);
               let wasm_path = config
@@ -298,5 +315,44 @@ impl WorkflowEngine {
   /// Clear the component cache.
   pub fn clear_cache(&self) {
     self.component_cache.clear();
+  }
+
+  /// Find all trigger nodes in the workflow.
+  fn find_trigger_nodes(&self, workflow: &Workflow) -> Vec<String> {
+    workflow
+      .nodes
+      .iter()
+      .filter(|(_, node)| matches!(node.node_type, NodeType::Trigger(_)))
+      .map(|(id, _)| id.clone())
+      .collect()
+  }
+
+  /// Validate the workflow graph.
+  ///
+  /// Checks:
+  /// - All entry points (nodes with no incoming edges) must be trigger nodes
+  /// - Non-trigger nodes with no incoming edges are orphans (error)
+  fn validate_workflow(&self, workflow: &Workflow) -> Result<(), ExecutionError> {
+    let graph = workflow.graph();
+    let entry_points = graph.entry_points();
+
+    for entry_id in entry_points {
+      let node = workflow
+        .get_node(entry_id)
+        .ok_or_else(|| ExecutionError::InvalidGraph {
+          message: format!("entry point '{}' not found in nodes", entry_id),
+        })?;
+
+      if !matches!(node.node_type, NodeType::Trigger(_)) {
+        return Err(ExecutionError::InvalidGraph {
+          message: format!(
+            "node '{}' has no incoming edges but is not a trigger (orphan node)",
+            entry_id
+          ),
+        });
+      }
+    }
+
+    Ok(())
   }
 }

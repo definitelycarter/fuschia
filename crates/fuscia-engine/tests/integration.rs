@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use fuscia_config::InputValue;
 use fuscia_engine::{EngineConfig, ExecutionError, WorkflowEngine, WorkflowRunner};
-use fuscia_workflow::{LockedComponent, Node, NodeType, Workflow};
+use fuscia_workflow::{LockedComponent, LockedTrigger, Node, NodeType, Workflow};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
@@ -48,24 +48,28 @@ fn create_test_engine_config() -> (EngineConfig, tempfile::TempDir) {
   (config, temp_dir)
 }
 
+/// Create a manual trigger node.
+fn create_manual_trigger(node_id: &str) -> Node {
+  Node {
+    node_id: node_id.to_string(),
+    node_type: NodeType::Trigger(LockedTrigger {
+      name: "manual".to_string(),
+      version: "1.0.0".to_string(),
+      digest: "sha256:manual".to_string(),
+    }),
+    inputs: HashMap::new(),
+    timeout_ms: None,
+    max_retry_attempts: None,
+    fail_workflow: true,
+  }
+}
+
 /// Create a simple workflow with a trigger node and one task node.
 fn create_simple_workflow() -> Workflow {
   let mut nodes = HashMap::new();
 
   // Trigger node (entry point)
-  nodes.insert(
-    "trigger".to_string(),
-    Node {
-      node_id: "trigger".to_string(),
-      node_type: NodeType::Join {
-        strategy: fuscia_config::JoinStrategy::All,
-      },
-      inputs: HashMap::new(),
-      timeout_ms: None,
-      max_retry_attempts: None,
-      fail_workflow: true,
-    },
-  );
+  nodes.insert("trigger".to_string(), create_manual_trigger("trigger"));
 
   // Task node
   let mut task_inputs = HashMap::new();
@@ -105,19 +109,7 @@ fn create_parallel_workflow() -> Workflow {
   let mut nodes = HashMap::new();
 
   // Trigger node
-  nodes.insert(
-    "trigger".to_string(),
-    Node {
-      node_id: "trigger".to_string(),
-      node_type: NodeType::Join {
-        strategy: fuscia_config::JoinStrategy::All,
-      },
-      inputs: HashMap::new(),
-      timeout_ms: None,
-      max_retry_attempts: None,
-      fail_workflow: true,
-    },
-  );
+  nodes.insert("trigger".to_string(), create_manual_trigger("trigger"));
 
   // Branch A - processes "a" field
   let mut branch_a_inputs = HashMap::new();
@@ -378,19 +370,7 @@ async fn test_input_template_resolution() {
   // Create a workflow where the task input uses a filter
   let mut nodes = HashMap::new();
 
-  nodes.insert(
-    "trigger".to_string(),
-    Node {
-      node_id: "trigger".to_string(),
-      node_type: NodeType::Join {
-        strategy: fuscia_config::JoinStrategy::All,
-      },
-      inputs: HashMap::new(),
-      timeout_ms: None,
-      max_retry_attempts: None,
-      fail_workflow: true,
-    },
-  );
+  nodes.insert("trigger".to_string(), create_manual_trigger("trigger"));
 
   let mut task_inputs = HashMap::new();
   task_inputs.insert(
@@ -437,4 +417,159 @@ async fn test_input_template_resolution() {
 
   // The minijinja `upper` filter should have been applied
   assert_eq!(output["input"]["message"], "HELLO");
+}
+
+#[tokio::test]
+async fn test_orphan_node_validation() {
+  let (config, _temp_dir) = create_test_engine_config();
+  let engine = WorkflowEngine::new(config).expect("failed to create engine");
+
+  // Create a workflow with an orphan node (no incoming edges, not a trigger)
+  let mut nodes = HashMap::new();
+
+  nodes.insert("trigger".to_string(), create_manual_trigger("trigger"));
+
+  // Orphan node - Component with no incoming edges
+  nodes.insert(
+    "orphan".to_string(),
+    Node {
+      node_id: "orphan".to_string(),
+      node_type: NodeType::Component(LockedComponent {
+        name: "test-task".to_string(),
+        version: "1.0.0".to_string(),
+        digest: "sha256:abc123".to_string(),
+      }),
+      inputs: HashMap::new(),
+      timeout_ms: None,
+      max_retry_attempts: None,
+      fail_workflow: true,
+    },
+  );
+
+  // Task node connected to trigger
+  nodes.insert(
+    "process".to_string(),
+    Node {
+      node_id: "process".to_string(),
+      node_type: NodeType::Component(LockedComponent {
+        name: "test-task".to_string(),
+        version: "1.0.0".to_string(),
+        digest: "sha256:abc123".to_string(),
+      }),
+      inputs: HashMap::new(),
+      timeout_ms: None,
+      max_retry_attempts: None,
+      fail_workflow: true,
+    },
+  );
+
+  let workflow = Workflow {
+    workflow_id: "orphan-test".to_string(),
+    name: "Orphan Test".to_string(),
+    nodes,
+    // Note: "orphan" has no incoming edge
+    edges: vec![("trigger".to_string(), "process".to_string())],
+    timeout_ms: None,
+    max_retry_attempts: None,
+  };
+
+  let payload = json!({});
+  let cancel = CancellationToken::new();
+
+  let result = engine.execute(&workflow, payload, cancel).await;
+
+  assert!(matches!(result, Err(ExecutionError::InvalidGraph { .. })));
+  if let Err(ExecutionError::InvalidGraph { message }) = result {
+    assert!(message.contains("orphan"));
+  }
+}
+
+#[tokio::test]
+async fn test_multiple_triggers() {
+  if !component_exists() {
+    eprintln!(
+      "Skipping test: test component not built. Run `cargo component build --release` in test-components/test-task-component"
+    );
+    return;
+  }
+
+  let (config, _temp_dir) = create_test_engine_config();
+  let engine = WorkflowEngine::new(config).expect("failed to create engine");
+
+  // Create a workflow with two triggers
+  let mut nodes = HashMap::new();
+
+  nodes.insert(
+    "webhook_trigger".to_string(),
+    create_manual_trigger("webhook_trigger"),
+  );
+  nodes.insert(
+    "cron_trigger".to_string(),
+    create_manual_trigger("cron_trigger"),
+  );
+
+  // Task node that both triggers feed into via a join
+  nodes.insert(
+    "join".to_string(),
+    Node {
+      node_id: "join".to_string(),
+      node_type: NodeType::Join {
+        strategy: fuscia_config::JoinStrategy::Any,
+      },
+      inputs: HashMap::new(),
+      timeout_ms: None,
+      max_retry_attempts: None,
+      fail_workflow: true,
+    },
+  );
+
+  let mut task_inputs = HashMap::new();
+  task_inputs.insert(
+    "data".to_string(),
+    InputValue::Literal(json!("{{ webhook_trigger }}")),
+  );
+
+  nodes.insert(
+    "process".to_string(),
+    Node {
+      node_id: "process".to_string(),
+      node_type: NodeType::Component(LockedComponent {
+        name: "test-task".to_string(),
+        version: "1.0.0".to_string(),
+        digest: "sha256:abc123".to_string(),
+      }),
+      inputs: task_inputs,
+      timeout_ms: None,
+      max_retry_attempts: None,
+      fail_workflow: true,
+    },
+  );
+
+  let workflow = Workflow {
+    workflow_id: "multi-trigger".to_string(),
+    name: "Multi-Trigger Workflow".to_string(),
+    nodes,
+    edges: vec![
+      ("webhook_trigger".to_string(), "join".to_string()),
+      ("cron_trigger".to_string(), "join".to_string()),
+      ("join".to_string(), "process".to_string()),
+    ],
+    timeout_ms: None,
+    max_retry_attempts: None,
+  };
+
+  let payload = json!({ "source": "test" });
+  let cancel = CancellationToken::new();
+
+  let result = engine
+    .execute(&workflow, payload, cancel)
+    .await
+    .expect("workflow execution failed");
+
+  // Should have executed all nodes
+  assert_eq!(result.node_results.len(), 4);
+  assert!(result.node_results.contains_key("webhook_trigger"));
+  assert!(result.node_results.contains_key("cron_trigger"));
+  assert!(result.node_results.contains_key("join"));
+  assert!(result.node_results.contains_key("process"));
 }

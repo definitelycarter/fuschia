@@ -17,9 +17,28 @@ pub struct Node {
 /// The type of a resolved node.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum NodeType {
+  /// A trigger node that initiates workflow execution.
+  /// Trigger nodes cannot have incoming edges.
+  Trigger(LockedTrigger),
+  /// A component task node.
   Component(LockedComponent),
+  /// A join node that merges multiple branches.
   Join { strategy: JoinStrategy },
+  /// A loop node with a nested workflow.
   Loop(LockedLoop),
+}
+
+/// A trigger component that has been resolved and locked.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LockedTrigger {
+  /// Component name (e.g., "my-org/webhook-trigger")
+  pub name: String,
+
+  /// Component version (e.g., "1.0.0")
+  pub version: String,
+
+  /// SHA-256 digest of the wasm binary (for verification)
+  pub digest: String,
 }
 
 /// A component that has been resolved and locked.
