@@ -18,31 +18,16 @@ pub enum TriggerError {
 #[derive(Debug, Clone)]
 pub enum Trigger {
   /// Manual trigger - workflow is started by user action
-  Manual(ManualTrigger),
+  Manual,
 
-  /// Webhook trigger - workflow is started by HTTP request
-  Webhook(WebhookTrigger),
-
-  /// Component trigger - wasm component that can register webhooks or poll
+  /// Component trigger - wasm component that handles poll or webhook events
   Component(ComponentTrigger),
 }
 
-/// Manual trigger - workflow is started by user action.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ManualTrigger {}
-
-/// Webhook trigger - workflow is started by HTTP request.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WebhookTrigger {
-  /// HTTP method to accept (GET, POST, etc.)
-  pub method: String,
-
-  /// Optional schema for validating webhook payload
-  #[serde(default)]
-  pub schema: Option<serde_json::Value>,
-}
-
-/// Component trigger - wasm component that can register webhooks or poll.
+/// Component trigger - wasm component that handles events.
+///
+/// The trigger type (poll/webhook) and its configuration (interval, method)
+/// are defined in the component manifest's TriggerExport.
 #[derive(Debug, Clone)]
 pub struct ComponentTrigger {
   /// The installed component that implements the trigger
@@ -77,17 +62,8 @@ mod tests {
 
   #[test]
   fn test_manual_trigger() {
-    let trigger = Trigger::Manual(ManualTrigger {});
-    assert!(matches!(trigger, Trigger::Manual(_)));
-  }
-
-  #[test]
-  fn test_webhook_trigger() {
-    let trigger = Trigger::Webhook(WebhookTrigger {
-      method: "POST".to_string(),
-      schema: None,
-    });
-    assert!(matches!(trigger, Trigger::Webhook(_)));
+    let trigger = Trigger::Manual;
+    assert!(matches!(trigger, Trigger::Manual));
   }
 
   #[test]

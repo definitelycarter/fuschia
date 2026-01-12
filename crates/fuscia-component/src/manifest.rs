@@ -52,6 +52,22 @@ pub struct TaskExport {
   pub schema: serde_json::Value,
 }
 
+/// The type of trigger and its configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum TriggerType {
+  /// Poll-based trigger that fires on a schedule
+  Poll {
+    /// Polling interval in milliseconds
+    interval_ms: u64,
+  },
+  /// Webhook-based trigger that fires on HTTP request
+  Webhook {
+    /// HTTP method to accept (GET, POST, etc.)
+    method: String,
+  },
+}
+
 /// A trigger exported by a component.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerExport {
@@ -60,6 +76,9 @@ pub struct TriggerExport {
 
   /// JSON Schema for trigger configuration
   pub schema: serde_json::Value,
+
+  /// The type of trigger (poll, webhook, etc.)
+  pub trigger_type: TriggerType,
 }
 
 impl ComponentManifest {
@@ -137,6 +156,7 @@ mod tests {
                 "spreadsheet_id": { "type": "string" }
             }
         }),
+        trigger_type: TriggerType::Poll { interval_ms: 30000 },
       },
     );
 

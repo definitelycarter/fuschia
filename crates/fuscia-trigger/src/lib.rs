@@ -2,11 +2,11 @@
 //!
 //! Triggers define how workflows are initiated. They can be:
 //! - Manual: User-initiated execution
-//! - Webhook: HTTP endpoint that starts the workflow
-//! - Component: WebAssembly component that can register webhooks or poll external services
+//! - Component: WebAssembly component that handles poll or webhook events
+//!
+//! The trigger type (poll/webhook) and configuration (interval, HTTP method)
+//! are defined in the component manifest's TriggerExport.
 
 mod types;
 
-pub use types::{
-  ComponentTrigger, ManualTrigger, Trigger, TriggerError, TriggerEvent, WebhookTrigger,
-};
+pub use types::{ComponentTrigger, Trigger, TriggerError, TriggerEvent};
