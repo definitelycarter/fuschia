@@ -1,0 +1,23 @@
+package fuscia:platform@0.1.0;
+
+/// Base platform world with common imports for all components.
+world platform {
+  import fuscia:kv/kv@0.1.0;
+  import fuscia:config/config@0.1.0;
+  import fuscia:log/log@0.1.0;
+  import wasi:http/outgoing-handler@0.2.0;
+}
+
+/// World for task components.
+/// Tasks execute work within a workflow node.
+world task-component {
+  include platform;
+  export fuscia:task/task@0.1.0;
+}
+
+/// World for trigger components.
+/// Triggers initiate workflow execution based on events.
+world trigger-component {
+  include platform;
+  export fuscia:trigger/trigger@0.1.0;
+}

@@ -20,11 +20,17 @@ Fuscia is a workflow engine similar to n8n, built on WebAssembly components usin
   - `fuscia-resolver` - Transforms `WorkflowDef` (config) into `Workflow` (locked). Validates graph is a DAG (no cycles), resolves component references via the registry, and handles recursive loop node resolution.
   - `fuscia-task` - Task execution types. Defines `Task` enum (Http, Component), `TaskContext` with pre-resolved inputs (execution_id, node_id, task_id, inputs), and `TaskOutput` with output JSON and artifact references. Includes HTTP executor implementation.
   - `fuscia-trigger` - Trigger types for workflow initiation. Defines `Trigger` enum (Manual, Component) and `TriggerEvent` for starting workflow executions. Trigger type (poll/webhook) and config (interval, method) are defined in the component manifest.
+  - `fuscia-world` - Wasmtime bindgen host world. Uses `wasmtime::component::bindgen!` to generate Rust bindings from WIT interfaces. Defines the host world that combines all imports (kv, config, log, http) and exports (task, trigger).
 - `wit/` - WebAssembly Interface Type (WIT) definitions
-  - `task.wit` - Task interface with context (execution-id, node-id, task-id) and execute function
-  - `trigger.wit` - Trigger interface with event variants (poll, webhook via WASI incoming-request) and handle function returning status (completed/pending)
-  - `kv.wit` - Key-value store host import for component state persistence
-  - `config.wit` - Config host import for lazy configuration lookup
+  - `world.wit` - Platform world with shared imports, plus task-component and trigger-component worlds
+  - `deps/` - WIT package dependencies
+    - `fuscia-task/task.wit` - Task interface with context (execution-id, node-id, task-id) and execute function
+    - `fuscia-trigger/trigger.wit` - Trigger interface with event variants (poll, webhook via WASI incoming-request) and handle function returning status (completed/pending)
+    - `fuscia-kv/kv.wit` - Key-value store host import for component state persistence
+    - `fuscia-config/config.wit` - Config host import for lazy configuration lookup
+    - `fuscia-log/log.wit` - Logging interface that routes to OpenTelemetry on the host
+    - `wasi_http@0.2.0.wit` - WASI HTTP types and outgoing handler
+    - `wasi_io@0.2.0.wit`, `wasi_clocks@0.2.0.wit`, etc. - WASI dependencies
 - `migrations/` - SQLite database migrations (sqlx)
 - `docs/` - Design documentation
 

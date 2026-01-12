@@ -1,0 +1,7 @@
+[package]
+name = "fuscia-world"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+wasmtime = { version = "29", features = ["component-model", "async"] }

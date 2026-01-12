@@ -15,6 +15,7 @@ members = [
   "crates/fuscia-task",
   "crates/fuscia-trigger",
   "crates/fuscia-workflow",
+  "crates/fuscia-world",
 ]
 
 [dependencies]

@@ -11,7 +11,8 @@
 | `fuscia-component` | Component manifest, registry trait, FsComponentRegistry. Components can export multiple tasks and triggers. | Done |
 | `fuscia-resolver` | Convert `WorkflowDef` (config) → `Workflow` (locked), validate graph | Done |
 | `fuscia-task` | Task types (Http, Component), TaskContext with pre-resolved inputs, TaskOutput with artifacts | Done |
-| `fuscia-trigger` | Trigger types (Manual, Webhook, Component), TriggerEvent for workflow initiation | Done |
+| `fuscia-trigger` | Trigger types (Manual, Component), TriggerEvent for workflow initiation | Done |
+| `fuscia-world` | Wasmtime bindgen host world, generates Rust bindings from WIT interfaces | Done |
 
 ## Crates - Outstanding
 
@@ -38,6 +39,9 @@
 | WIT task interface | Task execute function with context (execution-id, node-id, task-id) | `wit/task.wit` |
 | WIT trigger interface | Trigger handle function with event variants (poll, webhook) | `wit/trigger.wit` |
 | WIT host imports | Key-value store and config imports for components | `wit/kv.wit`, `wit/config.wit` |
+| WIT log interface | Logging interface that routes to OpenTelemetry | `wit/log.wit` |
+| WIT platform world | Shared world with common imports (kv, config, log, http) | `wit/world.wit` |
+| Host bindings generation | wasmtime bindgen generates Rust traits from WIT | `fuscia-world` |
 
 ## Features - Outstanding
 
