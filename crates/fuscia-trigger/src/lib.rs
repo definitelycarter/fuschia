@@ -8,6 +8,5 @@
 mod types;
 
 pub use types::{
-  ComponentTrigger, ManualTrigger, Trigger, TriggerConfig, TriggerError, TriggerEvent,
-  WebhookTrigger,
+  ComponentTrigger, ManualTrigger, Trigger, TriggerError, TriggerEvent, WebhookTrigger,
 };

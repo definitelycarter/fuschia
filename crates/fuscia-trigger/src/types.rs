@@ -62,33 +62,6 @@ pub struct ComponentTrigger {
   pub config: serde_json::Value,
 }
 
-/// Configuration for instantiating a trigger.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum TriggerConfig {
-  Manual {
-    #[serde(default)]
-    schema: Option<serde_json::Value>,
-  },
-  Webhook {
-    method: String,
-    path: String,
-    #[serde(default)]
-    schema: Option<serde_json::Value>,
-  },
-  Component {
-    /// Component reference (name)
-    component: String,
-    /// Version constraint
-    version: Option<String>,
-    /// Trigger name within the component
-    trigger_name: String,
-    /// Configuration for the trigger
-    #[serde(default)]
-    config: serde_json::Value,
-  },
-}
-
 /// Event emitted by a trigger to start workflow execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerEvent {
@@ -123,26 +96,6 @@ mod tests {
       schema: None,
     });
     assert!(matches!(trigger, Trigger::Webhook(_)));
-  }
-
-  #[test]
-  fn test_trigger_config_serialization() {
-    let config = TriggerConfig::Webhook {
-      method: "POST".to_string(),
-      path: "/api/trigger".to_string(),
-      schema: Some(serde_json::json!({
-          "type": "object",
-          "properties": {
-              "data": { "type": "string" }
-          }
-      })),
-    };
-
-    let json = serde_json::to_string(&config).unwrap();
-    assert!(json.contains("\"type\":\"webhook\""));
-
-    let parsed: TriggerConfig = serde_json::from_str(&json).unwrap();
-    assert!(matches!(parsed, TriggerConfig::Webhook { .. }));
   }
 
   #[test]
