@@ -49,6 +49,9 @@
 | Host state management | HostState generic over KvStore, Store creation helpers | `fuscia-host` |
 | Task component execution | Load, instantiate, execute task components via wasmtime | `fuscia-task-host` |
 | Trigger component execution | Load, instantiate, execute trigger components via wasmtime | `fuscia-trigger-host` |
+| WASI Preview 2 support | WasiView, ResourceTable, p2::add_to_linker_async for component WASI imports | `fuscia-task-host`, `fuscia-trigger-host` |
+| Test wasm components | test-task-component and test-trigger-component for integration testing | `test-components/` |
+| Integration tests | Tests for task and trigger host execution with real wasm components | `fuscia-task-host`, `fuscia-trigger-host` |
 
 ## Features - Outstanding
 
