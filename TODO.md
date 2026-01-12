@@ -15,8 +15,9 @@
 
 | Crate | Description | Priority |
 |-------|-------------|----------|
-| `fuscia-runtime` | Execution state types (step inputs, results, transient state) | High |
-| `fuscia-wasm` | Wasmtime integration, load and execute Wasm components | High |
+| `fuscia-trigger` | Trigger definitions and runtime (cron, webhook, mqtt, manual) | High |
+| `fuscia-task` | Task execution types (context, output, path expressions, input resolution) | High |
+| `fuscia-executor` | Task executors: wasm components (wasmtime) + built-ins (http, delay, etc.) | High |
 | `fuscia-engine` | Workflow orchestration, scheduling, graph execution | High |
 | `fuscia-cli` | Command-line interface | Medium |
 
@@ -32,13 +33,16 @@
 
 | Feature | Description | Notes |
 |---------|-------------|-------|
-| Wasm execution | Load component from registry, call via WIT | Needs `fuscia-wasm` |
-| Input path resolution | Resolve `$.node.output.field` expressions at runtime | Needs `fuscia-runtime` or engine |
+| Workflow triggers | Cron, webhook, mqtt, manual triggers to start workflows | Needs `fuscia-trigger` |
+| Task execution types | TaskContext, TaskOutput, path expression parsing | Needs `fuscia-task` |
+| Wasm execution | Load component from registry, call via WIT | Needs `fuscia-executor` |
+| Built-in executors | Native http, delay, etc. executors | Needs `fuscia-executor` |
+| Input path resolution | Resolve `$.node.output.field` expressions at runtime | Needs `fuscia-task` |
 | Parallel branch execution | Spawn concurrent tasks for independent branches | Needs `fuscia-engine` |
 | Join node handling | Wait for branches, apply strategy (All/Any) | Needs `fuscia-engine` |
 | Loop execution | Iterate over collection, execute nested workflow | Needs `fuscia-engine` |
 | Retry logic | Retry failed nodes per policy | Needs `fuscia-engine` |
-| Timeout enforcement | Kill Wasm execution via epoch interruption | Needs `fuscia-wasm` |
+| Timeout enforcement | Kill Wasm execution via epoch interruption | Needs `fuscia-executor` |
 | Observability | OpenTelemetry tracing to Jaeger | Needs integration across crates |
 | Component packaging | Bundle manifest + wasm + readme + assets into .fcpkg | Needs `fuscia-cli` |
 
@@ -88,7 +92,7 @@
 
 | Question | Context |
 |----------|---------|
-| Path expression parsing location | Should live in `fuscia-config` (parse at config time) or `fuscia-runtime` (parse at execution)? |
+| Path expression parsing location | Should live in `fuscia-config` (parse at config time) or `fuscia-task` (parse at execution)? |
 | WIT interface design | Deferred - need to design component interface for Wasm modules |
 | Graph method return types | Should `downstream()`/`upstream()` return `Option<&[String]>` instead of `&[]`? |
 | Loop item injection | How does `{ "item": {...}, "index": 0 }` get passed to nested workflow inputs? |
