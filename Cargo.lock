@@ -777,6 +777,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuscia-host"
+version = "0.0.1-alpha.0"
+dependencies = [
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+ "wasmtime",
+]
+
+[[package]]
 name = "fuscia-resolver"
 version = "0.0.1-alpha.0"
 dependencies = [

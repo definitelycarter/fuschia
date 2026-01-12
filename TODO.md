@@ -13,12 +13,12 @@
 | `fuscia-task` | Task types (Http, Component), TaskContext with pre-resolved inputs, TaskOutput with artifacts | Done |
 | `fuscia-trigger` | Trigger types (Manual, Component), TriggerEvent for workflow initiation | Done |
 | `fuscia-world` | Wasmtime bindgen host world, generates Rust bindings from WIT interfaces | Done |
+| `fuscia-host` | Shared wasmtime infrastructure (Engine, Store setup, epoch timeout, pluggable KvStore trait) | Done |
 
 ## Crates - Outstanding
 
 | Crate | Description | Priority |
 |-------|-------------|----------|
-| `fuscia-host` | Shared wasmtime infrastructure (Engine, Store setup, epoch timeout, common host imports) | High |
 | `fuscia-task-host` | Task component execution, binds to task-component world | High |
 | `fuscia-trigger-host` | Trigger component execution, binds to trigger-component world | High |
 | `fuscia-engine` | Workflow orchestration, scheduling, graph execution | High |
@@ -44,14 +44,17 @@
 | WIT log interface | Logging interface that routes to OpenTelemetry | `wit/log.wit` |
 | WIT platform world | Shared world with common imports (kv, config, log, http) | `wit/world.wit` |
 | Host bindings generation | wasmtime bindgen generates Rust traits from WIT | `fuscia-world` |
+| Pluggable KV store | Async KvStore trait with InMemoryKvStore implementation | `fuscia-host` |
+| Engine configuration | Wasmtime Engine with epoch interruption and async support | `fuscia-host` |
+| Host state management | HostState generic over KvStore, Store creation helpers | `fuscia-host` |
 
 ## Features - Outstanding
 
 | Feature | Description | Notes |
 |---------|-------------|-------|
 | Input path resolution | Resolve `$.node.output.field` expressions at runtime | Needs `fuscia-engine` |
-| Wasm component hosting | Load, instantiate, execute wasm with wasmtime | Needs `fuscia-host` |
-| Timeout enforcement | Kill Wasm execution via epoch interruption | Needs `fuscia-host` |
+| Wasm component hosting | Load, instantiate, execute wasm with wasmtime | Needs `fuscia-task-host` |
+| Timeout enforcement | Kill Wasm execution via epoch interruption | Infrastructure in `fuscia-host`, needs integration |
 | Parallel branch execution | Spawn concurrent tasks for independent branches | Needs `fuscia-engine` |
 | Join node handling | Wait for branches, apply strategy (All/Any) | Needs `fuscia-engine` |
 | Loop execution | Iterate over collection, execute nested workflow | Needs `fuscia-engine` |
