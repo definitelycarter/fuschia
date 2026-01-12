@@ -435,6 +435,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuscia-trigger"
+version = "0.0.1-alpha.0"
+dependencies = [
+ "fuscia-component",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "fuscia-workflow"
 version = "0.0.1-alpha.0"
 dependencies = [

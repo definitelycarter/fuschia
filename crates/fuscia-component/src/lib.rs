@@ -5,5 +5,5 @@ mod registry;
 
 pub use error::RegistryError;
 pub use fs_registry::FsComponentRegistry;
-pub use manifest::ComponentManifest;
+pub use manifest::{ComponentCapabilities, ComponentManifest, TaskExport, TriggerExport};
 pub use registry::{ComponentRegistry, InstalledComponent};

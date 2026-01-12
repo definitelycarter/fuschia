@@ -293,7 +293,9 @@ mod tests {
         version: version.to_string(),
         description: "Test component".to_string(),
         digest: digest.to_string(),
-        input_schema: serde_json::json!({}),
+        capabilities: Default::default(),
+        tasks: HashMap::new(),
+        triggers: HashMap::new(),
       };
       let installed = InstalledComponent {
         manifest,
