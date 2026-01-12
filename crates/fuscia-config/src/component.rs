@@ -1,15 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-/// Source location for a Wasm component.
+/// Reference to a component in the registry.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ComponentSource {
-  /// Load from a local file path.
-  File { path: String },
-  /// Load from a URL.
-  Url {
-    url: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    digest: Option<String>,
-  },
+pub struct ComponentRef {
+  /// Component name, e.g. "my-org/sentiment-analysis"
+  pub name: String,
+
+  /// Optional version constraint, e.g. "1.0.0"
+  /// If not specified, uses the latest installed version.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub version: Option<String>,
 }

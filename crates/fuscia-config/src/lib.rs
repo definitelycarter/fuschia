@@ -18,7 +18,7 @@ mod input;
 mod node;
 mod workflow;
 
-pub use component::ComponentSource;
+pub use component::ComponentRef;
 pub use edge::Edge;
 pub use enums::{ExecutionMode, JoinStrategy, LoopFailureMode, RetryBackoff};
 pub use input::InputValue;

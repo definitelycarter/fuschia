@@ -6,11 +6,12 @@ Fuscia is a workflow engine similar to n8n, built on WebAssembly components usin
 
 ### Graph Structure
 
-Workflows are represented as **directed graphs with control flow**, not strict DAGs. This supports:
+Workflows are represented as **directed acyclic graphs (DAGs)** with control flow nodes. The graph itself has no cycles, but control flow is handled through special node types:
 
-- **Loop nodes** - iterate over items or repeat until a condition is met
-- **IF/Switch nodes** - conditional branching
-- **Cycles** - a node's output can connect back to an earlier node
+- **Loop nodes** - iterate over items, executing a nested workflow for each element
+- **Join nodes** - synchronize parallel branches
+
+Loop nodes contain a nested workflow (itself a DAG) that executes multiple times. This provides iteration without introducing graph cycles, keeping scheduling and dependency resolution simple.
 
 ### Parallel Execution
 
@@ -65,41 +66,99 @@ enum JoinStrategy {
 
 Both strategies wait for all branches to complete before evaluating. Built-in strategies control **whether to proceed**. The join node must still produce a single output envelope for downstream nodes, either via the strategy's default behavior or custom Wasm logic.
 
-## Component Schema
+## Component Registry
 
-Each Wasm component declares its input and output schemas using JSON Schema. This enables:
+Components are installed separately from workflows and referenced by name. This provides a plugin-like system similar to npm packages.
 
-- **Validation** - Verify workflow definitions at design time
-- **Dynamic UI** - Generate form fields for node configuration
-- **Documentation** - Self-describing components
+### Component Manifest
 
-### Schema Definition
-
-Components define schemas as part of their metadata:
+Each installed component has a manifest describing it:
 
 ```json
 {
-  "component": "http-fetch",
+  "name": "my-org/http-fetch",
+  "version": "1.0.0",
+  "description": "Fetch data from HTTP endpoints",
+  "digest": "sha256:abc123...",
   "input_schema": {
     "type": "object",
     "required": ["url"],
     "properties": {
       "url": { "type": "string", "format": "uri" },
-      "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE"] },
-      "headers": { "type": "object" },
-      "body": { "type": "string" }
-    }
-  },
-  "output_schema": {
-    "type": "object",
-    "properties": {
-      "status": { "type": "integer" },
-      "headers": { "type": "object" },
-      "body": { "type": "string" }
+      "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE"] }
     }
   }
 }
 ```
+
+### Component Package Structure
+
+Components are distributed as packages containing:
+
+```
+my-component-1.0.0.fcpkg
+├── manifest.json
+├── component.wasm
+├── README.md (optional)
+└── assets/ (optional)
+    └── screenshot.png
+```
+
+### Installation Directory
+
+Installed components live in a predictable directory structure:
+
+```
+~/.fuscia/components/
+├── my-org--http-fetch--1.0.0/
+│   ├── manifest.json
+│   ├── component.wasm
+│   └── README.md
+└── my-org--http-fetch--2.0.0/
+    ├── manifest.json
+    └── component.wasm
+```
+
+### Workflow References
+
+Workflows reference components by name and optional version:
+
+```json
+{
+  "node_id": "fetch_data",
+  "type": "component",
+  "name": "my-org/http-fetch",
+  "version": "1.0.0",
+  "inputs": {
+    "url": "https://api.example.com/data",
+    "method": "GET"
+  }
+}
+```
+
+If version is omitted, the latest installed version is used.
+
+### Resolution Process
+
+When a workflow is resolved (config → locked workflow):
+
+1. Look up each component reference in the registry
+2. Validate the component exists
+3. Lock the workflow with concrete name, version, and digest
+4. The locked workflow is ready for execution
+
+This separation allows:
+- Sharing workflows without bundling components
+- Updating components independently of workflows
+- Verifying component integrity via digest
+
+## Component Schema
+
+The `input_schema` in the manifest uses JSON Schema. This enables:
+
+- **Validation** - Verify workflow inputs at resolve time
+- **Dynamic UI** - Generate form fields for node configuration
+- **Documentation** - Self-describing components
 
 ### Workflow Node Inputs
 

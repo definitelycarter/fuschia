@@ -1,0 +1,15 @@
+[package]
+name = "fuscia-resolver"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+async-trait = "0.1"
+fuscia-component = { path = "../fuscia-component" }
+fuscia-config = { path = "../fuscia-config" }
+fuscia-workflow = { path = "../fuscia-workflow" }
+thiserror = "2.0"
+
+[dev-dependencies]
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
