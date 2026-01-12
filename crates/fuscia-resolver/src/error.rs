@@ -27,10 +27,6 @@ pub enum ResolveError {
   #[error("cycle detected in workflow graph")]
   CycleDetected,
 
-  /// Invalid trigger configuration.
-  #[error("invalid trigger '{node_id}': {message}")]
-  InvalidTrigger { node_id: String, message: String },
-
   /// Registry error while looking up component.
   #[error("registry error: {0}")]
   Registry(#[from] fuscia_component::RegistryError),

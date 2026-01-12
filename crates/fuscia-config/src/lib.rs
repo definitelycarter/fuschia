@@ -22,5 +22,5 @@ pub use component::ComponentRef;
 pub use edge::Edge;
 pub use enums::{ExecutionMode, JoinStrategy, LoopFailureMode, RetryBackoff, TriggerType};
 pub use input::InputValue;
-pub use node::{NodeDef, NodeType};
+pub use node::{NodeDef, NodeType, TriggerComponentRef};
 pub use workflow::WorkflowDef;

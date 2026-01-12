@@ -121,13 +121,12 @@ impl<R: ComponentRegistry> StandardResolver<R> {
       let node_type = match node_def.node_type {
         ConfigNodeType::Trigger {
           trigger_type,
-          component,
-          trigger_name,
+          trigger_component,
         } => {
-          let locked_component = match (component, trigger_name) {
-            (Some(comp_ref), Some(name)) => {
+          let locked_component = match trigger_component {
+            Some(tc) => {
               let installed = self
-                .lookup_component(&comp_ref.name, comp_ref.version.as_deref())
+                .lookup_component(&tc.component.name, tc.component.version.as_deref())
                 .await?;
 
               Some(LockedTriggerComponent {
@@ -136,17 +135,10 @@ impl<R: ComponentRegistry> StandardResolver<R> {
                   version: installed.manifest.version,
                   digest: installed.manifest.digest,
                 },
-                trigger_name: name,
+                trigger_name: tc.trigger_name,
               })
             }
-            (None, None) => None,
-            _ => {
-              return Err(ResolveError::InvalidTrigger {
-                node_id: node_def.node_id.clone(),
-                message: "component and trigger_name must both be present or both be absent"
-                  .to_string(),
-              });
-            }
+            None => None,
           };
 
           NodeType::Trigger(LockedTrigger {

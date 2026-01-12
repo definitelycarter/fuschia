@@ -22,6 +22,16 @@ pub struct NodeDef {
   pub fail_workflow: Option<bool>,
 }
 
+/// A trigger component reference with its export name.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TriggerComponentRef {
+  /// Component reference
+  #[serde(flatten)]
+  pub component: ComponentRef,
+  /// Name of the trigger export within the component (e.g., "row-added")
+  pub trigger_name: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum NodeType {
@@ -31,11 +41,8 @@ pub enum NodeType {
     #[serde(flatten)]
     trigger_type: TriggerType,
     /// Optional component for custom trigger processing
-    #[serde(skip_serializing_if = "Option::is_none")]
-    component: Option<ComponentRef>,
-    /// Name of the trigger export within the component
-    #[serde(skip_serializing_if = "Option::is_none")]
-    trigger_name: Option<String>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    trigger_component: Option<TriggerComponentRef>,
   },
   #[serde(rename = "component")]
   Component {
