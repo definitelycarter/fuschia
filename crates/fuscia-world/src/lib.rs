@@ -6,19 +6,12 @@
 wasmtime::component::bindgen!({
     path: "../../wit",
     inline: r#"
-        package fuscia:host;
+        package fuscia:runtime;
 
         world host {
-            // Host imports (provided by engine to components)
-            import fuscia:kv/kv@0.1.0;
-            import fuscia:config/config@0.1.0;
-            import fuscia:log/log@0.1.0;
-            import wasi:http/outgoing-handler@0.2.0;
-
-            // Component exports (called by engine)
-            export fuscia:task/task@0.1.0;
-            export fuscia:trigger/trigger@0.1.0;
+            include fuscia:fuscia/host;
         }
     "#,
-    async: true,
+    imports: { default: async },
+    exports: { default: async },
 });

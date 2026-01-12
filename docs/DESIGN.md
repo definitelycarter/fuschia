@@ -604,6 +604,51 @@ Jaeger runs as a container and provides a web UI for visualizing traces, making 
 
 ## Wasm Runtime
 
+### Host Crate Architecture
+
+The wasmtime hosting layer is split into three crates:
+
+| Crate | Responsibility |
+|-------|----------------|
+| `fuscia-host` | Shared wasmtime infrastructure: Engine configuration, Store setup, epoch-based timeout utilities, common host import implementations (kv, config, log) |
+| `fuscia-task-host` | Task-specific execution. Imports `fuscia-host`, binds to `task-component` world, invokes `task.execute` |
+| `fuscia-trigger-host` | Trigger-specific execution. Imports `fuscia-host`, binds to `trigger-component` world, invokes `trigger.handle` |
+
+**Rationale:** `fuscia-host` provides the wasmtime foundation without knowing about tasks or triggers. The specialized crates compose it with their WIT world bindings.
+
+### Component Lifecycle
+
+- **Compile once, instantiate fresh per execution** - Component compilation is expensive; the compiled `Component` is cached. Each task/trigger execution gets a fresh `Instance` for isolation.
+- **Shared Engine** - The wasmtime `Engine` is expensive to create and should be shared across all component executions in a process.
+
+### Host Import Implementations
+
+Components have access to these host-provided imports:
+
+| Import | Scope | Description |
+|--------|-------|-------------|
+| `fuscia:kv/kv` | Per-execution | Key-value store isolated to the workflow execution. Components cannot see other executions' state. |
+| `fuscia:config/config` | Per-component | Configuration values from the workflow node definition |
+| `fuscia:log/log` | Per-execution | Logging routed to OpenTelemetry with execution context |
+| `wasi:http/outgoing-handler` | Per-component | HTTP requests filtered by `allowed_hosts` from manifest |
+
+### Error Handling
+
+Component execution produces granular errors:
+
+```rust
+enum HostError {
+    /// Component instantiation failed (bad wasm, missing imports, etc.)
+    Instantiation { message: String },
+    /// Component trapped (OOM, stack overflow, epoch timeout, etc.)
+    Trap { trap_code: Option<TrapCode>, message: String },
+    /// Component returned error via WIT result (not necessarily a task failure)
+    ComponentError { message: String },
+}
+```
+
+**Note:** `ComponentError` doesn't automatically mean task failure. A component can return an error (successfully, without trapping) and the engine decides based on workflow config whether it's "failed" or "completed with errors".
+
 ### Runtime Selection
 
 **Wasmtime** is the chosen runtime because:

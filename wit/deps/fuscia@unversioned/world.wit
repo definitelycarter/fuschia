@@ -1,0 +1,10 @@
+package fuscia:fuscia;
+
+/// Host world combining all imports and exports for the fuscia runtime.
+/// This is used by the engine to instantiate and run components.
+world host {
+    include fuscia:platform/platform@0.1.0;
+
+    export fuscia:task/task@0.1.0;
+    export fuscia:trigger/trigger@0.1.0;
+}

@@ -18,7 +18,9 @@
 
 | Crate | Description | Priority |
 |-------|-------------|----------|
-| `fuscia-host` | Wasmtime component hosting (load, instantiate, execute wasm components) | High |
+| `fuscia-host` | Shared wasmtime infrastructure (Engine, Store setup, epoch timeout, common host imports) | High |
+| `fuscia-task-host` | Task component execution, binds to task-component world | High |
+| `fuscia-trigger-host` | Trigger component execution, binds to trigger-component world | High |
 | `fuscia-engine` | Workflow orchestration, scheduling, graph execution | High |
 | `fuscia-cli` | Command-line interface | Medium |
 
@@ -99,10 +101,61 @@
 | Missing artifact refs in Task | `Task` type has no field to store artifact references produced by the node | High |
 | Incomplete ExecutionStatus | Missing `Cancelled`, `Paused`, `TimedOut` states | Low |
 
+## Design Decisions
+
+### Host Crate Architecture
+
+The wasmtime hosting layer is split into three crates:
+
+| Crate | Responsibility |
+|-------|----------------|
+| `fuscia-host` | Shared wasmtime infrastructure: Engine configuration, Store setup, epoch-based timeout utilities, common host import implementations (kv, config, log) |
+| `fuscia-task-host` | Task-specific execution. Imports `fuscia-host`, binds to `task-component` world, invokes `task.execute` |
+| `fuscia-trigger-host` | Trigger-specific execution. Imports `fuscia-host`, binds to `trigger-component` world, invokes `trigger.handle` |
+
+**Rationale:** Clean separation - `fuscia-host` provides wasmtime foundation without knowing about tasks/triggers. Specialized crates compose it with their WIT bindings.
+
+### Component Instance Lifecycle
+
+- **Compile once, instantiate fresh per execution** - Component compilation is expensive; cache the compiled `Component`. Each task/trigger execution gets a fresh `Instance` for isolation.
+- Shared `Engine` passed into host crates (Engine creation is expensive, should be shared across process).
+
+### KV Store Scope
+
+- **Per-execution scoping** - Each workflow execution gets isolated KV state. Components cannot see other executions' data. Host receives execution-scoped KV store trait when invoking components.
+
+### Timeout Enforcement
+
+- **Epoch-based interruption** via wasmtime:
+  1. Engine configured with `epoch_interruption(true)`
+  2. Store gets `set_epoch_deadline(1)` before calling wasm
+  3. Background task increments engine epoch after timeout duration
+  4. Wasm traps with `EpochInterruption` if still running
+- Timeout value: `node.timeout.unwrap_or(workflow.default_timeout)` - passed as `Duration` to host crates
+
+### Error Handling
+
+Component execution errors are granular:
+
+```rust
+enum TaskHostError {
+    /// Component instantiation failed (bad wasm, missing imports, etc.)
+    Instantiation { message: String },
+    /// Component trapped (OOM, stack overflow, epoch timeout, etc.)
+    Trap { trap_code: Option<TrapCode>, message: String },
+    /// Component returned error via WIT result (not necessarily a task failure)
+    ComponentError { message: String },
+}
+```
+
+**Note:** `ComponentError` doesn't automatically mean task failure. The engine decides based on workflow config whether it's "failed" or "completed with errors".
+
 ## Open Questions
 
 | Question | Context |
 |----------|---------|
+| HTTP outbound filtering | How to enforce `allowed_hosts` with `wasmtime-wasi-http`? Custom `WasiHttpView` wrapper or implement own handler? |
+| Shared Engine ownership | Should `fuscia-host` own the Engine singleton, or should caller create and pass it in? |
 | Path expression parsing location | Should live in `fuscia-config` (parse at config time) or `fuscia-task` (parse at execution)? |
 | Graph method return types | Should `downstream()`/`upstream()` return `Option<&[String]>` instead of `&[]`? |
 | Loop item injection | How does `{ "item": {...}, "index": 0 }` get passed to nested workflow inputs? |
