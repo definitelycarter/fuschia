@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use fuscia_config::TriggerType;
 use serde::{Deserialize, Serialize};
 
 /// Metadata describing an installed component.
@@ -50,24 +51,6 @@ pub struct TaskExport {
 
   /// JSON Schema for task inputs
   pub schema: serde_json::Value,
-}
-
-/// The type of trigger and its configuration.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum TriggerType {
-  /// Manual trigger - user-initiated via CLI or UI
-  Manual,
-  /// Poll-based trigger that fires on a schedule
-  Poll {
-    /// Polling interval in milliseconds
-    interval_ms: u64,
-  },
-  /// Webhook-based trigger that fires on HTTP request
-  Webhook {
-    /// HTTP method to accept (GET, POST, etc.)
-    method: String,
-  },
 }
 
 /// A trigger exported by a component.

@@ -5,7 +5,6 @@ mod registry;
 
 pub use error::RegistryError;
 pub use fs_registry::FsComponentRegistry;
-pub use manifest::{
-  ComponentCapabilities, ComponentManifest, TaskExport, TriggerExport, TriggerType,
-};
+pub use fuscia_config::TriggerType;
+pub use manifest::{ComponentCapabilities, ComponentManifest, TaskExport, TriggerExport};
 pub use registry::{ComponentRegistry, InstalledComponent};

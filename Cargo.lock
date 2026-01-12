@@ -762,6 +762,7 @@ name = "fuscia-component"
 version = "0.0.1-alpha.0"
 dependencies = [
  "async-trait",
+ "fuscia-config",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
@@ -887,7 +888,6 @@ dependencies = [
 name = "fuscia-workflow"
 version = "0.0.1-alpha.0"
 dependencies = [
- "fuscia-component",
  "fuscia-config",
  "serde",
  "serde_json",

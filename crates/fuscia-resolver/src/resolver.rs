@@ -6,7 +6,9 @@ use async_trait::async_trait;
 
 use fuscia_component::{ComponentRegistry, InstalledComponent};
 use fuscia_config::{NodeDef, NodeType as ConfigNodeType, WorkflowDef};
-use fuscia_workflow::{LockedComponent, LockedLoop, Node, NodeType, Workflow};
+use fuscia_workflow::{
+  LockedComponent, LockedLoop, LockedTrigger, LockedTriggerComponent, Node, NodeType, Workflow,
+};
 
 use crate::error::ResolveError;
 
@@ -117,6 +119,41 @@ impl<R: ComponentRegistry> StandardResolver<R> {
   ) -> Pin<Box<dyn Future<Output = Result<Node, ResolveError>> + Send + 'a>> {
     Box::pin(async move {
       let node_type = match node_def.node_type {
+        ConfigNodeType::Trigger {
+          trigger_type,
+          component,
+          trigger_name,
+        } => {
+          let locked_component = match (component, trigger_name) {
+            (Some(comp_ref), Some(name)) => {
+              let installed = self
+                .lookup_component(&comp_ref.name, comp_ref.version.as_deref())
+                .await?;
+
+              Some(LockedTriggerComponent {
+                component: LockedComponent {
+                  name: installed.manifest.name,
+                  version: installed.manifest.version,
+                  digest: installed.manifest.digest,
+                },
+                trigger_name: name,
+              })
+            }
+            (None, None) => None,
+            _ => {
+              return Err(ResolveError::InvalidTrigger {
+                node_id: node_def.node_id.clone(),
+                message: "component and trigger_name must both be present or both be absent"
+                  .to_string(),
+              });
+            }
+          };
+
+          NodeType::Trigger(LockedTrigger {
+            trigger_type,
+            component: locked_component,
+          })
+        }
         ConfigNodeType::Component { component } => {
           let installed = self
             .lookup_component(&component.name, component.version.as_deref())

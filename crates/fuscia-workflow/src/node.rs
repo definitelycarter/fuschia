@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
-use fuscia_component::TriggerType;
-use fuscia_config::{ExecutionMode, InputValue, JoinStrategy, LoopFailureMode};
+use fuscia_config::{ExecutionMode, InputValue, JoinStrategy, LoopFailureMode, TriggerType};
 use serde::{Deserialize, Serialize};
 
 /// A resolved node in a locked workflow.
