@@ -8,15 +8,15 @@
 | `fuscia-artifact` | Artifact storage trait + FsStore implementation | Done |
 | `fuscia-store` | Workflow execution/task storage trait + SqliteStore | Done |
 | `fuscia-workflow` | Locked/resolved workflow with graph traversal | Done |
-| `fuscia-component` | Component manifest, registry trait, and FsComponentRegistry | Done |
+| `fuscia-component` | Component manifest, registry trait, FsComponentRegistry. Components can export multiple tasks and triggers. | Done |
 | `fuscia-resolver` | Convert `WorkflowDef` (config) → `Workflow` (locked), validate graph | Done |
+| `fuscia-task` | Task types (Http, Component), TaskContext with pre-resolved inputs, TaskOutput with artifacts | Done |
+| `fuscia-trigger` | Trigger types (Manual, Webhook, Component), TriggerEvent for workflow initiation | Done |
 
 ## Crates - Outstanding
 
 | Crate | Description | Priority |
 |-------|-------------|----------|
-| `fuscia-trigger` | Trigger definitions and runtime (cron, webhook, mqtt, manual) | High |
-| `fuscia-task` | Task types, context, dispatch, built-in executors (http, delay), input resolution | High |
 | `fuscia-host` | Wasmtime component hosting (load, instantiate, execute wasm components) | High |
 | `fuscia-engine` | Workflow orchestration, scheduling, graph execution | High |
 | `fuscia-cli` | Command-line interface | Medium |
@@ -27,16 +27,19 @@
 |---------|-------------|-------|
 | Config → Workflow locking | Validate graph (DAG), resolve component refs, detect cycles | `fuscia-resolver` |
 | Component registry | Install/list/remove components, lookup by name+version | `fuscia-component` |
-| Component manifest | Name, version, description, digest, input schema | `fuscia-component` |
+| Component manifest | Name, version, description, digest, capabilities, tasks, triggers | `fuscia-component` |
+| Task types | Http and Component task variants | `fuscia-task` |
+| Task context | Pre-resolved inputs passed to task execution | `fuscia-task` |
+| Http executor | Built-in HTTP request executor | `fuscia-task` |
+| Trigger types | Manual, Webhook, Component trigger variants | `fuscia-trigger` |
+| Trigger events | TriggerEvent for workflow initiation | `fuscia-trigger` |
+| Component capabilities | allowed_hosts and allowed_paths for security sandboxing | `fuscia-component` |
 
 ## Features - Outstanding
 
 | Feature | Description | Notes |
 |---------|-------------|-------|
-| Workflow triggers | Cron, webhook, mqtt, manual triggers to start workflows | Needs `fuscia-trigger` |
-| Task execution types | Task enum, TaskContext, TaskOutput | Needs `fuscia-task` |
-| Built-in task executors | HTTP requests, delay, etc. | Needs `fuscia-task` |
-| Input path resolution | Resolve `$.node.output.field` expressions at runtime | Needs `fuscia-task` |
+| Input path resolution | Resolve `$.node.output.field` expressions at runtime | Needs `fuscia-engine` |
 | Wasm component hosting | Load, instantiate, execute wasm with wasmtime | Needs `fuscia-host` |
 | Timeout enforcement | Kill Wasm execution via epoch interruption | Needs `fuscia-host` |
 | Parallel branch execution | Spawn concurrent tasks for independent branches | Needs `fuscia-engine` |
