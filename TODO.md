@@ -15,12 +15,12 @@
 | `fuscia-world` | Wasmtime bindgen host world, generates Rust bindings from WIT interfaces | Done |
 | `fuscia-host` | Shared wasmtime infrastructure (Engine, Store setup, epoch timeout, pluggable KvStore trait) | Done |
 | `fuscia-task-host` | Task component execution, binds to task-component world, implements kv/config/log host imports | Done |
+| `fuscia-trigger-host` | Trigger component execution, binds to trigger-component world, implements kv/config/log host imports | Done |
 
 ## Crates - Outstanding
 
 | Crate | Description | Priority |
 |-------|-------------|----------|
-| `fuscia-trigger-host` | Trigger component execution, binds to trigger-component world | High |
 | `fuscia-engine` | Workflow orchestration, scheduling, graph execution | High |
 | `fuscia-cli` | Command-line interface | Medium |
 
@@ -48,6 +48,7 @@
 | Engine configuration | Wasmtime Engine with epoch interruption and async support | `fuscia-host` |
 | Host state management | HostState generic over KvStore, Store creation helpers | `fuscia-host` |
 | Task component execution | Load, instantiate, execute task components via wasmtime | `fuscia-task-host` |
+| Trigger component execution | Load, instantiate, execute trigger components via wasmtime | `fuscia-trigger-host` |
 
 ## Features - Outstanding
 

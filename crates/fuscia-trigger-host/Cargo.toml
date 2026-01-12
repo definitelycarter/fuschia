@@ -1,0 +1,13 @@
+[package]
+name = "fuscia-trigger-host"
+edition.workspace = true
+version.workspace = true
+description = "Trigger component execution for fuscia"
+
+[dependencies]
+fuscia-host = { path = "../fuscia-host" }
+wasmtime = { version = "40", features = ["component-model", "async"] }
+wasmtime-wasi = { version = "40" }
+thiserror = "2"
+tracing = "0.1"
+futures = "0.3"

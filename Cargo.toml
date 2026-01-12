@@ -16,6 +16,7 @@ members = [
   "crates/fuscia-task",
   "crates/fuscia-task-host",
   "crates/fuscia-trigger",
+  "crates/fuscia-trigger-host",
   "crates/fuscia-workflow",
   "crates/fuscia-world",
 ]
