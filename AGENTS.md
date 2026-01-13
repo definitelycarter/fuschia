@@ -64,3 +64,4 @@ cargo fmt
 - Use `cargo fmt` before committing
 - Ensure all tests pass with `cargo test`
 - Add tests for new functionality
+- Do not automatically commit or push to this repository - wait for explicit user approval

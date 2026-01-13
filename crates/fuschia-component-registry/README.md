@@ -1,4 +1,4 @@
-# fuschia-component
+# fuschia-component-registry
 
 Component registry system for managing installed Wasm components.
 
