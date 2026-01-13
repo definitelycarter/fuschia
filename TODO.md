@@ -16,12 +16,12 @@
 | `fuscia-host` | Shared wasmtime infrastructure (Engine, Store setup, epoch timeout, pluggable KvStore trait) | Done |
 | `fuscia-task-host` | Task component execution, binds to task-component world, implements kv/config/log host imports | Done |
 | `fuscia-trigger-host` | Trigger component execution, binds to trigger-component world, implements kv/config/log host imports | Done |
+| `fuscia-engine` | Workflow orchestration, graph execution, parallel scheduling, input resolution | Done |
 
 ## Crates - Outstanding
 
 | Crate | Description | Priority |
 |-------|-------------|----------|
-| `fuscia-engine` | Workflow orchestration, scheduling, graph execution | High |
 | `fuscia-cli` | Command-line interface | Medium |
 
 ## Features - Completed
@@ -52,20 +52,32 @@
 | WASI Preview 2 support | WasiView, ResourceTable, p2::add_to_linker_async for component WASI imports | `fuscia-task-host`, `fuscia-trigger-host` |
 | Test wasm components | test-task-component and test-trigger-component for integration testing | `test-components/` |
 | Integration tests | Tests for task and trigger host execution with real wasm components | `fuscia-task-host`, `fuscia-trigger-host` |
+| Workflow engine | Graph traversal with parallel node execution via tokio tasks | `fuscia-engine` |
+| WorkflowRunner | Channel-based workflow triggering with mpsc sender/receiver | `fuscia-engine` |
+| Input resolution | Minijinja templating for node inputs (`{{ field }}`, `{{ name \| upper }}`) | `fuscia-engine` |
+| Component caching | Compile wasm once, instantiate on-demand per execution | `fuscia-engine` |
+| Cancellation support | CancellationToken for workflow-level and epoch interruption for node-level | `fuscia-engine` |
+| Parallel branch execution | Spawn concurrent tokio tasks for independent graph branches | `fuscia-engine` |
+| NodeType::Trigger | Proper trigger node type with TriggerType (Manual, Poll, Webhook) | `fuscia-config`, `fuscia-workflow` |
+| TriggerComponentRef | Type-safe pairing of component + trigger_name for trigger nodes | `fuscia-config` |
+| LockedTriggerComponent | Locked trigger component with digest and trigger export name | `fuscia-workflow` |
+| Orphan node detection | Validation that non-trigger nodes must have incoming edges | `fuscia-engine` |
+| Input type coercion | Parse resolved template strings to typed JSON values (string, number, boolean, etc.) | `fuscia-engine` |
+| Simplified InputValue | InputValue is now a type alias for String (all inputs are templates) | `fuscia-config` |
+| Schema in LockedComponent | `input_schema` copied from manifest at lock time for self-contained execution | `fuscia-workflow`, `fuscia-resolver` |
+| Task/trigger name in locked types | `task_name` and `trigger_name` identify which export to use from component | `fuscia-config`, `fuscia-workflow` |
 
 ## Features - Outstanding
 
 | Feature | Description | Notes |
 |---------|-------------|-------|
 | HTTP outbound for components | Add `wasi:http/outgoing-handler` to platform world | Requires wasmtime-wasi-http integration |
-| Input path resolution | Resolve `$.node.output.field` expressions at runtime | Needs `fuscia-engine` |
-| Timeout enforcement | Kill Wasm execution via epoch interruption | Infrastructure in `fuscia-host`, needs integration |
-| Parallel branch execution | Spawn concurrent tasks for independent branches | Needs `fuscia-engine` |
-| Join node handling | Wait for branches, apply strategy (All/Any) | Needs `fuscia-engine` |
-| Loop execution | Iterate over collection, execute nested workflow | Needs `fuscia-engine` |
-| Retry logic | Retry failed nodes per policy | Needs `fuscia-engine` |
+| Join node handling | Wait for branches, apply strategy (All/Any) | Needs `fuscia-engine` enhancement |
+| Loop execution | Iterate over collection, execute nested workflow | Needs `fuscia-engine` enhancement |
+| Retry logic | Retry failed nodes per policy | Needs `fuscia-engine` enhancement |
 | Observability | OpenTelemetry tracing to Jaeger | Needs integration across crates |
 | Component packaging | Bundle manifest + wasm + readme + assets into .fcpkg | Needs `fuscia-cli` |
+| Store integration | Persist execution records to fuscia-store | Needs `fuscia-engine` enhancement |
 
 ## Gaps - Existing Crates
 
@@ -74,7 +86,6 @@
 | Gap | Description | Priority |
 |-----|-------------|----------|
 | Missing retry fields on NodeDef | `retry_backoff` and `retry_initial_delay_ms` only on `WorkflowDef`, not `NodeDef` | Medium |
-| Path expression validation | `InputValue::Path` is a raw `String` with no validation of `$.node.output.field` syntax | High |
 
 ### fuscia-workflow
 
@@ -86,8 +97,13 @@
 
 | Gap | Description | Priority |
 |-----|-------------|----------|
-| Input path validation | Doesn't validate that `InputValue::Path` references point to valid node IDs | High |
 | Join node validation | Doesn't validate that `Join` nodes actually have multiple incoming edges | Medium |
+
+### fuscia-engine
+
+| Gap | Description | Priority |
+|-----|-------------|----------|
+| Required field validation | No validation that required input fields are present | Medium |
 
 ### fuscia-component
 
@@ -122,6 +138,68 @@ The wasmtime hosting layer is split into three crates:
 | `fuscia-trigger-host` | Trigger-specific execution. Imports `fuscia-host`, binds to `trigger-component` world, invokes `trigger.handle` |
 
 **Rationale:** Clean separation - `fuscia-host` provides wasmtime foundation without knowing about tasks/triggers. Specialized crates compose it with their WIT bindings.
+
+### Workflow Engine Architecture
+
+The engine layer is split into runner and engine:
+
+| Type | Responsibility |
+|------|----------------|
+| `WorkflowRunner` | Owns mpsc channel (sender + receiver), provides `run(payload)` for direct triggering, `sender()` for webhook/poll handlers, `start(cancel)` for execution loop |
+| `WorkflowEngine` | Executes workflow given payload, handles graph traversal, parallel scheduling, input resolution via minijinja |
+
+**Rationale:** Separation between triggering mechanism (Runner) and execution logic (Engine). Triggers are decoupled from workflow execution.
+
+### Input Resolution
+
+Node inputs use **minijinja templating** for dynamic value resolution:
+
+- **Single upstream node:** Context is the upstream node's `data` output
+  ```json
+  { "recipient": "{{ email }}", "greeting": "Hello {{ name | title }}!" }
+  ```
+
+- **Join nodes (future):** Context keyed by upstream node names
+  ```json
+  { "user_email": "{{ fetch_user.email }}", "config": "{{ get_config.setting }}" }
+  ```
+
+**Rationale:** Minijinja provides familiar Jinja2 syntax with filters, conditionals, and safe expression evaluation.
+
+### Data Visibility
+
+**Strict single-hop visibility:** Each node only sees its immediate upstream node's `data` output.
+
+- No implicit access to trigger payload from non-entry nodes
+- No cross-branch data sharing without explicit join
+- Future: Add `context` escape hatch for explicit cross-node data sharing
+
+**Rationale:** Predictable data flow, easier debugging, prevents implicit coupling between distant nodes.
+
+### Trigger Node Types
+
+Triggers have a **type** (Manual, Poll, Webhook) and optional **component**:
+
+| Trigger Type | Description |
+|--------------|-------------|
+| Manual | User-initiated via CLI or UI |
+| Poll | Scheduled execution with `interval_ms` |
+| Webhook | HTTP request with specified `method` |
+
+**Built-in vs Component triggers:**
+- Built-in (no component): Simple triggers handled by engine directly
+- Component (with wasm): Custom validation/transformation logic before workflow execution
+
+**Type-safe pairing:** `TriggerComponentRef` and `LockedTriggerComponent` ensure `component` and `trigger_name` are always specified together.
+
+### Concurrency Model
+
+- **Tokio tasks for parallelism** - Ready nodes spawn as concurrent tokio tasks
+- **Parallelism emerges from graph structure** - Independent branches execute in parallel automatically
+- **CancellationToken per workflow execution** - Propagates cancellation to all running nodes
+- **Epoch interruption for in-flight wasm** - Cancels long-running component execution
+
+**Future:** Easy to migrate to work queue for distributed execution.
 
 ### Component Instance Lifecycle
 
@@ -158,6 +236,21 @@ enum TaskHostError {
 
 **Note:** `ComponentError` doesn't automatically mean task failure. The engine decides based on workflow config whether it's "failed" or "completed with errors".
 
+Workflow execution errors:
+
+```rust
+enum ExecutionError {
+    /// Input template resolution failed
+    InputResolution { node_id: String, message: String },
+    /// Component execution failed
+    ComponentExecution { node_id: String, source: HostError },
+    /// Workflow was cancelled
+    Cancelled,
+    /// Node execution timed out
+    Timeout { node_id: String },
+}
+```
+
 ## Open Questions
 
 | Question | Context |
@@ -170,3 +263,4 @@ enum TaskHostError {
 | Join node output shape | What's the output - aggregated map of branch outputs? Pass-through? |
 | WorkflowExecution.config type | Should store original `WorkflowDef` or locked `Workflow` for audit trail? |
 | KV store value types | Should kv.wit support complex types (json, number, bool, object) or just strings? |
+| WorkflowRunner naming | Current name may be confusing - reconsider naming |

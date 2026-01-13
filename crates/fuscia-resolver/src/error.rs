@@ -27,6 +27,20 @@ pub enum ResolveError {
   #[error("cycle detected in workflow graph")]
   CycleDetected,
 
+  /// Task not found in component manifest.
+  #[error("task '{task_name}' not found in component '{component}'")]
+  TaskNotFound {
+    component: String,
+    task_name: String,
+  },
+
+  /// Trigger not found in component manifest.
+  #[error("trigger '{trigger_name}' not found in component '{component}'")]
+  TriggerNotFound {
+    component: String,
+    trigger_name: String,
+  },
+
   /// Registry error while looking up component.
   #[error("registry error: {0}")]
   Registry(#[from] fuscia_component::RegistryError),

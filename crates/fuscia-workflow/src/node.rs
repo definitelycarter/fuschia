@@ -43,13 +43,23 @@ pub struct LockedTrigger {
 /// A locked trigger component with its export name.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LockedTriggerComponent {
-  /// The locked component that implements the trigger
-  pub component: LockedComponent,
+  /// Component name (e.g., "my-org/google-sheets")
+  pub name: String,
+
+  /// Component version (e.g., "1.0.0")
+  pub version: String,
+
+  /// SHA-256 digest of the wasm binary (for verification)
+  pub digest: String,
+
   /// Name of the trigger export within the component (e.g., "row-added")
   pub trigger_name: String,
+
+  /// JSON Schema for the trigger's input (copied from manifest at lock time)
+  pub input_schema: serde_json::Value,
 }
 
-/// A component that has been resolved and locked.
+/// A locked task component that has been resolved.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LockedComponent {
   /// Component name (e.g., "my-org/sentiment-analysis")
@@ -60,6 +70,12 @@ pub struct LockedComponent {
 
   /// SHA-256 digest of the wasm binary (for verification)
   pub digest: String,
+
+  /// Name of the task export within the component (e.g., "write-row")
+  pub task_name: String,
+
+  /// JSON Schema for the task's input (copied from manifest at lock time)
+  pub input_schema: serde_json::Value,
 }
 
 /// A loop node with its nested workflow.

@@ -15,7 +15,7 @@ use wasmtime::Engine;
 
 use crate::cache::{ComponentCache, ComponentKey};
 use crate::error::ExecutionError;
-use crate::input::resolve_inputs;
+use crate::input::{coerce_inputs, extract_schema_types, resolve_inputs};
 
 /// Result of a single node execution.
 #[derive(Debug, Clone)]
@@ -135,7 +135,7 @@ impl WorkflowEngine {
           let node = workflow.get_node(&node_id).unwrap().clone();
 
           // Get component info and compile
-          let component_result = match &node.node_type {
+          let (component_result, input_schema) = match &node.node_type {
             NodeType::Trigger(_) => {
               // Trigger nodes should already be completed with the payload
               // This case shouldn't be reached in normal execution
@@ -152,7 +152,8 @@ impl WorkflowEngine {
                 .join(&locked.name)
                 .join(&locked.version)
                 .join("component.wasm");
-              component_cache.get_or_compile(&engine, &key, &wasm_path)
+              let result = component_cache.get_or_compile(&engine, &key, &wasm_path);
+              (result, locked.input_schema.clone())
             }
             NodeType::Join { .. } => {
               // Join nodes don't execute components, they just merge data
@@ -206,8 +207,12 @@ impl WorkflowEngine {
                 .collect::<HashMap<_, _>>()
             };
 
-            // Resolve inputs
-            let resolved_inputs = resolve_inputs(&node_id, &node.inputs, &upstream_data, is_join)?;
+            // Resolve inputs (template rendering)
+            let resolved_strings = resolve_inputs(&node_id, &node.inputs, &upstream_data, is_join)?;
+
+            // Coerce inputs to typed values based on component schema
+            let schema = extract_schema_types(&input_schema);
+            let resolved_inputs = coerce_inputs(&node_id, &resolved_strings, &schema)?;
 
             // Create host state
             let state = TaskHostState::new(execution_id.clone(), node_id.clone());

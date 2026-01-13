@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use fuscia_config::InputValue;
 use fuscia_engine::{EngineConfig, ExecutionError, WorkflowEngine, WorkflowRunner};
 use fuscia_workflow::{LockedComponent, LockedTrigger, Node, NodeType, Workflow};
 use serde_json::json;
@@ -48,6 +47,40 @@ fn create_test_engine_config() -> (EngineConfig, tempfile::TempDir) {
   (config, temp_dir)
 }
 
+/// Create a test LockedComponent with default schema.
+fn test_locked_component() -> LockedComponent {
+  LockedComponent {
+    name: "test-task".to_string(),
+    version: "1.0.0".to_string(),
+    digest: "sha256:abc123".to_string(),
+    task_name: "execute".to_string(),
+    input_schema: json!({
+      "type": "object",
+      "properties": {
+        "message": { "type": "string" }
+      }
+    }),
+  }
+}
+
+/// Create a test LockedComponent with typed schema for coercion tests.
+fn test_locked_component_with_typed_schema() -> LockedComponent {
+  LockedComponent {
+    name: "test-task".to_string(),
+    version: "1.0.0".to_string(),
+    digest: "sha256:abc123".to_string(),
+    task_name: "execute".to_string(),
+    input_schema: json!({
+      "type": "object",
+      "properties": {
+        "count": { "type": "integer" },
+        "enabled": { "type": "boolean" },
+        "name": { "type": "string" }
+      }
+    }),
+  }
+}
+
 /// Create a manual trigger node.
 fn create_manual_trigger(node_id: &str) -> Node {
   Node {
@@ -72,20 +105,13 @@ fn create_simple_workflow() -> Workflow {
 
   // Task node
   let mut task_inputs = HashMap::new();
-  task_inputs.insert(
-    "message".to_string(),
-    InputValue::Literal(json!("{{ message }}")),
-  );
+  task_inputs.insert("message".to_string(), "{{ message }}".to_string());
 
   nodes.insert(
     "process".to_string(),
     Node {
       node_id: "process".to_string(),
-      node_type: NodeType::Component(LockedComponent {
-        name: "test-task".to_string(),
-        version: "1.0.0".to_string(),
-        digest: "sha256:abc123".to_string(),
-      }),
+      node_type: NodeType::Component(test_locked_component()),
       inputs: task_inputs,
       timeout_ms: None,
       max_retry_attempts: None,
@@ -112,17 +138,13 @@ fn create_parallel_workflow() -> Workflow {
 
   // Branch A - processes "a" field
   let mut branch_a_inputs = HashMap::new();
-  branch_a_inputs.insert("message".to_string(), InputValue::Literal(json!("{{ a }}")));
+  branch_a_inputs.insert("message".to_string(), "{{ a }}".to_string());
 
   nodes.insert(
     "branch_a".to_string(),
     Node {
       node_id: "branch_a".to_string(),
-      node_type: NodeType::Component(LockedComponent {
-        name: "test-task".to_string(),
-        version: "1.0.0".to_string(),
-        digest: "sha256:abc123".to_string(),
-      }),
+      node_type: NodeType::Component(test_locked_component()),
       inputs: branch_a_inputs,
       timeout_ms: None,
       max_retry_attempts: None,
@@ -132,17 +154,13 @@ fn create_parallel_workflow() -> Workflow {
 
   // Branch B - processes "b" field
   let mut branch_b_inputs = HashMap::new();
-  branch_b_inputs.insert("message".to_string(), InputValue::Literal(json!("{{ b }}")));
+  branch_b_inputs.insert("message".to_string(), "{{ b }}".to_string());
 
   nodes.insert(
     "branch_b".to_string(),
     Node {
       node_id: "branch_b".to_string(),
-      node_type: NodeType::Component(LockedComponent {
-        name: "test-task".to_string(),
-        version: "1.0.0".to_string(),
-        digest: "sha256:abc123".to_string(),
-      }),
+      node_type: NodeType::Component(test_locked_component()),
       inputs: branch_b_inputs,
       timeout_ms: None,
       max_retry_attempts: None,
@@ -372,20 +390,13 @@ async fn test_input_template_resolution() {
   nodes.insert("trigger".to_string(), create_manual_trigger("trigger"));
 
   let mut task_inputs = HashMap::new();
-  task_inputs.insert(
-    "message".to_string(),
-    InputValue::Literal(json!("{{ name | upper }}")),
-  );
+  task_inputs.insert("message".to_string(), "{{ name | upper }}".to_string());
 
   nodes.insert(
     "process".to_string(),
     Node {
       node_id: "process".to_string(),
-      node_type: NodeType::Component(LockedComponent {
-        name: "test-task".to_string(),
-        version: "1.0.0".to_string(),
-        digest: "sha256:abc123".to_string(),
-      }),
+      node_type: NodeType::Component(test_locked_component()),
       inputs: task_inputs,
       timeout_ms: None,
       max_retry_attempts: None,
@@ -433,11 +444,7 @@ async fn test_orphan_node_validation() {
     "orphan".to_string(),
     Node {
       node_id: "orphan".to_string(),
-      node_type: NodeType::Component(LockedComponent {
-        name: "test-task".to_string(),
-        version: "1.0.0".to_string(),
-        digest: "sha256:abc123".to_string(),
-      }),
+      node_type: NodeType::Component(test_locked_component()),
       inputs: HashMap::new(),
       timeout_ms: None,
       max_retry_attempts: None,
@@ -450,11 +457,7 @@ async fn test_orphan_node_validation() {
     "process".to_string(),
     Node {
       node_id: "process".to_string(),
-      node_type: NodeType::Component(LockedComponent {
-        name: "test-task".to_string(),
-        version: "1.0.0".to_string(),
-        digest: "sha256:abc123".to_string(),
-      }),
+      node_type: NodeType::Component(test_locked_component()),
       inputs: HashMap::new(),
       timeout_ms: None,
       max_retry_attempts: None,
@@ -523,20 +526,13 @@ async fn test_multiple_triggers() {
   );
 
   let mut task_inputs = HashMap::new();
-  task_inputs.insert(
-    "data".to_string(),
-    InputValue::Literal(json!("{{ webhook_trigger }}")),
-  );
+  task_inputs.insert("data".to_string(), "{{ webhook_trigger }}".to_string());
 
   nodes.insert(
     "process".to_string(),
     Node {
       node_id: "process".to_string(),
-      node_type: NodeType::Component(LockedComponent {
-        name: "test-task".to_string(),
-        version: "1.0.0".to_string(),
-        digest: "sha256:abc123".to_string(),
-      }),
+      node_type: NodeType::Component(test_locked_component()),
       inputs: task_inputs,
       timeout_ms: None,
       max_retry_attempts: None,
@@ -571,4 +567,127 @@ async fn test_multiple_triggers() {
   assert!(result.node_results.contains_key("cron_trigger"));
   assert!(result.node_results.contains_key("join"));
   assert!(result.node_results.contains_key("process"));
+}
+
+#[tokio::test]
+async fn test_schema_type_coercion_success() {
+  if !component_exists() {
+    eprintln!(
+      "Skipping test: test component not built. Run `cargo component build --release` in test-components/test-task-component"
+    );
+    return;
+  }
+
+  let (config, _temp_dir) = create_test_engine_config();
+  let engine = WorkflowEngine::new(config).expect("failed to create engine");
+
+  // Create a workflow with typed inputs
+  let mut nodes = HashMap::new();
+
+  nodes.insert("trigger".to_string(), create_manual_trigger("trigger"));
+
+  let mut task_inputs = HashMap::new();
+  task_inputs.insert("count".to_string(), "{{ count }}".to_string());
+  task_inputs.insert("enabled".to_string(), "{{ enabled }}".to_string());
+  task_inputs.insert("name".to_string(), "{{ name }}".to_string());
+
+  nodes.insert(
+    "process".to_string(),
+    Node {
+      node_id: "process".to_string(),
+      node_type: NodeType::Component(test_locked_component_with_typed_schema()),
+      inputs: task_inputs,
+      timeout_ms: None,
+      max_retry_attempts: None,
+      fail_workflow: true,
+    },
+  );
+
+  let workflow = Workflow {
+    workflow_id: "coercion-test".to_string(),
+    name: "Coercion Test".to_string(),
+    nodes,
+    edges: vec![("trigger".to_string(), "process".to_string())],
+    timeout_ms: None,
+    max_retry_attempts: None,
+  };
+
+  // Pass values that will be coerced: "42" -> integer, "true" -> boolean
+  let payload = json!({ "count": 42, "enabled": true, "name": "test" });
+  let cancel = CancellationToken::new();
+
+  let result = engine
+    .execute(&workflow, payload, cancel)
+    .await
+    .expect("workflow execution failed");
+
+  let process_result = &result.node_results["process"];
+  let output: serde_json::Value =
+    serde_json::from_value(process_result.data.clone()).expect("invalid output");
+
+  // Verify the inputs were coerced to correct types
+  assert_eq!(output["input"]["count"], 42);
+  assert_eq!(output["input"]["enabled"], true);
+  assert_eq!(output["input"]["name"], "test");
+}
+
+#[tokio::test]
+async fn test_schema_type_coercion_failure() {
+  if !component_exists() {
+    eprintln!(
+      "Skipping test: test component not built. Run `cargo component build --release` in test-components/test-task-component"
+    );
+    return;
+  }
+
+  let (config, _temp_dir) = create_test_engine_config();
+  let engine = WorkflowEngine::new(config).expect("failed to create engine");
+
+  // Create a workflow with typed inputs
+  let mut nodes = HashMap::new();
+
+  nodes.insert("trigger".to_string(), create_manual_trigger("trigger"));
+
+  let mut task_inputs = HashMap::new();
+  // This will try to coerce "not_a_number" to an integer, which should fail
+  task_inputs.insert("count".to_string(), "{{ count }}".to_string());
+  task_inputs.insert("enabled".to_string(), "true".to_string());
+  task_inputs.insert("name".to_string(), "test".to_string());
+
+  nodes.insert(
+    "process".to_string(),
+    Node {
+      node_id: "process".to_string(),
+      node_type: NodeType::Component(test_locked_component_with_typed_schema()),
+      inputs: task_inputs,
+      timeout_ms: None,
+      max_retry_attempts: None,
+      fail_workflow: true,
+    },
+  );
+
+  let workflow = Workflow {
+    workflow_id: "coercion-fail-test".to_string(),
+    name: "Coercion Failure Test".to_string(),
+    nodes,
+    edges: vec![("trigger".to_string(), "process".to_string())],
+    timeout_ms: None,
+    max_retry_attempts: None,
+  };
+
+  // Pass an invalid value: "not_a_number" cannot be coerced to integer
+  let payload = json!({ "count": "not_a_number" });
+  let cancel = CancellationToken::new();
+
+  let result = engine.execute(&workflow, payload, cancel).await;
+
+  // Should fail with an InputResolution error
+  assert!(matches!(
+    result,
+    Err(ExecutionError::InputResolution { .. })
+  ));
+  if let Err(ExecutionError::InputResolution { node_id, message }) = result {
+    assert_eq!(node_id, "process");
+    assert!(message.contains("count") || message.contains("integer"));
+  }
 }

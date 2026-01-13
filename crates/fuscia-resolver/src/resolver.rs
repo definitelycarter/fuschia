@@ -118,75 +118,98 @@ impl<R: ComponentRegistry> StandardResolver<R> {
     node_def: NodeDef,
   ) -> Pin<Box<dyn Future<Output = Result<Node, ResolveError>> + Send + 'a>> {
     Box::pin(async move {
-      let node_type = match node_def.node_type {
-        ConfigNodeType::Trigger {
-          trigger_type,
-          trigger_component,
-        } => {
-          let locked_component = match trigger_component {
-            Some(tc) => {
-              let installed = self
-                .lookup_component(&tc.component.name, tc.component.version.as_deref())
-                .await?;
+      let node_type =
+        match node_def.node_type {
+          ConfigNodeType::Trigger {
+            trigger_type,
+            trigger_component,
+          } => {
+            let locked_component = match trigger_component {
+              Some(tc) => {
+                let installed = self
+                  .lookup_component(&tc.component.name, tc.component.version.as_deref())
+                  .await?;
 
-              Some(LockedTriggerComponent {
-                component: LockedComponent {
+                // Look up the trigger in the manifest to get its schema
+                let trigger_export = installed
+                  .manifest
+                  .triggers
+                  .get(&tc.trigger_name)
+                  .ok_or_else(|| ResolveError::TriggerNotFound {
+                    component: installed.manifest.name.clone(),
+                    trigger_name: tc.trigger_name.clone(),
+                  })?;
+
+                Some(LockedTriggerComponent {
                   name: installed.manifest.name,
                   version: installed.manifest.version,
                   digest: installed.manifest.digest,
-                },
-                trigger_name: tc.trigger_name,
-              })
-            }
-            None => None,
-          };
+                  trigger_name: tc.trigger_name,
+                  input_schema: trigger_export.schema.clone(),
+                })
+              }
+              None => None,
+            };
 
-          NodeType::Trigger(LockedTrigger {
-            trigger_type,
-            component: locked_component,
-          })
-        }
-        ConfigNodeType::Component { component } => {
-          let installed = self
-            .lookup_component(&component.name, component.version.as_deref())
-            .await?;
+            NodeType::Trigger(LockedTrigger {
+              trigger_type,
+              component: locked_component,
+            })
+          }
+          ConfigNodeType::Component {
+            component,
+            task_name,
+          } => {
+            let installed = self
+              .lookup_component(&component.name, component.version.as_deref())
+              .await?;
 
-          NodeType::Component(LockedComponent {
-            name: installed.manifest.name,
-            version: installed.manifest.version,
-            digest: installed.manifest.digest,
-          })
-        }
-        ConfigNodeType::Join { join_strategy } => NodeType::Join {
-          strategy: join_strategy,
-        },
-        ConfigNodeType::Loop {
-          execution_mode,
-          concurrency,
-          failure_mode,
-          nodes,
-          edges,
-        } => {
-          // Recursively resolve the nested workflow
-          let nested_workflow = self
-            .resolve_inner(
-              format!("{}_loop", node_def.node_id),
-              format!("{} (loop body)", node_def.node_id),
-              nodes,
-              edges,
-              None,
-              None,
-            )
-            .await?;
+            // Look up the task in the manifest to get its schema
+            let task_export = installed.manifest.tasks.get(&task_name).ok_or_else(|| {
+              ResolveError::TaskNotFound {
+                component: installed.manifest.name.clone(),
+                task_name: task_name.clone(),
+              }
+            })?;
 
-          NodeType::Loop(LockedLoop {
+            NodeType::Component(LockedComponent {
+              name: installed.manifest.name,
+              version: installed.manifest.version,
+              digest: installed.manifest.digest,
+              task_name,
+              input_schema: task_export.schema.clone(),
+            })
+          }
+          ConfigNodeType::Join { join_strategy } => NodeType::Join {
+            strategy: join_strategy,
+          },
+          ConfigNodeType::Loop {
             execution_mode,
             concurrency,
             failure_mode,
-            workflow: Box::new(nested_workflow),
-          })
-        }
-      };
+            nodes,
+            edges,
+          } => {
+            // Recursively resolve the nested workflow
+            let nested_workflow = self
+              .resolve_inner(
+                format!("{}_loop", node_def.node_id),
+                format!("{} (loop body)", node_def.node_id),
+                nodes,
+                edges,
+                None,
+                None,
+              )
+              .await?;
+
+            NodeType::Loop(LockedLoop {
+              execution_mode,
+              concurrency,
+              failure_mode,
+              workflow: Box::new(nested_workflow),
+            })
+          }
+        };
 
       Ok(Node {
         node_id: node_def.node_id,
@@ -317,13 +340,39 @@ mod tests {
     }
 
     fn add_component(&self, name: &str, version: &str, digest: &str) {
+      self.add_component_with_tasks(name, version, digest, vec!["default"]);
+    }
+
+    fn add_component_with_tasks(
+      &self,
+      name: &str,
+      version: &str,
+      digest: &str,
+      task_names: Vec<&str>,
+    ) {
+      use fuscia_component::TaskExport;
+
+      let mut tasks = HashMap::new();
+      for task_name in task_names {
+        tasks.insert(
+          task_name.to_string(),
+          TaskExport {
+            description: format!("Task {}", task_name),
+            schema: serde_json::json!({
+              "type": "object",
+              "properties": {}
+            }),
+          },
+        );
+      }
+
       let manifest = ComponentManifest {
         name: name.to_string(),
         version: version.to_string(),
         description: "Test component".to_string(),
         digest: digest.to_string(),
         capabilities: Default::default(),
-        tasks: HashMap::new(),
+        tasks,
         triggers: HashMap::new(),
       };
       let installed = InstalledComponent {
@@ -375,6 +424,10 @@ mod tests {
   }
 
   fn make_component_node(id: &str, component_name: &str) -> NodeDef {
+    make_component_node_with_task(id, component_name, "default")
+  }
+
+  fn make_component_node_with_task(id: &str, component_name: &str, task_name: &str) -> NodeDef {
     NodeDef {
       node_id: id.to_string(),
       node_type: ConfigNodeType::Component {
@@ -382,6 +435,7 @@ mod tests {
           name: component_name.to_string(),
           version: Some("1.0.0".to_string()),
         },
+        task_name: task_name.to_string(),
       },
       inputs: HashMap::new(),
       timeout_ms: None,
@@ -432,6 +486,8 @@ mod tests {
         assert_eq!(locked.name, "my-org/processor");
         assert_eq!(locked.version, "1.0.0");
         assert_eq!(locked.digest, "sha256:abc123");
+        assert_eq!(locked.task_name, "default");
+        assert!(locked.input_schema.is_object());
       }
       _ => panic!("expected component node"),
     }

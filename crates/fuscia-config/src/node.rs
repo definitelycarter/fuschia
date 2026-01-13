@@ -48,6 +48,8 @@ pub enum NodeType {
   Component {
     #[serde(flatten)]
     component: ComponentRef,
+    /// Name of the task export within the component (e.g., "write-row")
+    task_name: String,
   },
   Join {
     join_strategy: JoinStrategy,

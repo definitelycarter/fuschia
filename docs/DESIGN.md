@@ -15,25 +15,71 @@ Loop nodes contain a nested workflow (itself a DAG) that executes multiple times
 
 ### Parallel Execution
 
-Independent branches execute in parallel. When a workflow splits into multiple paths that don't depend on each other, the engine spawns concurrent tasks for each branch and synchronizes at join points where branches merge.
+Independent branches execute in parallel. When a workflow splits into multiple paths that don't depend on each other, the engine spawns concurrent tokio tasks for each branch and synchronizes at join points where branches merge.
 
-### Node Input Mappings
+The concurrency model:
+- **Tokio tasks for parallelism** - Ready nodes spawn as concurrent tokio tasks
+- **Parallelism emerges from graph structure** - Independent branches execute in parallel automatically
+- **CancellationToken per workflow execution** - Propagates cancellation to all running nodes
+- **Epoch interruption for in-flight wasm** - Cancels long-running component execution
 
-Each node specifies where its inputs come from via explicit mappings. Inputs reference prior node outputs using path expressions:
+### Node Input Resolution
+
+Node inputs are processed in two stages:
+
+1. **Template Resolution** - Render minijinja templates against upstream data → `HashMap<String, String>`
+2. **Type Coercion** - Parse strings to typed values according to schema → `serde_json::Value`
+
+All input values in the workflow config are template strings:
 
 ```json
 {
   "node_id": "send_email",
   "component": "email-sender",
   "inputs": {
-    "recipient": "$.fetch_user.output.email",
-    "subject": "$.generate_content.output.title",
-    "attachment": "$.process_file.artifacts[0]"
+    "recipient": "{{ email }}",
+    "count": "{{ items | length }}",
+    "enabled": "true",
+    "greeting": "Hello {{ name | title }}!"
   }
 }
 ```
 
-The engine resolves these mappings at runtime by pulling from prior nodes' outputs and artifacts.
+**Stage 1: Template Resolution**
+
+Templates are rendered via minijinja against upstream node data:
+
+- **Single upstream node:** Context is the upstream node's `data` output directly
+- **Join nodes (multiple upstream):** Context is keyed by upstream node names (`{{ fetch_user.email }}`, `{{ get_config.setting }}`)
+
+All resolved values are strings at this stage.
+
+**Stage 2: Type Coercion**
+
+Resolved strings are parsed according to the component's input schema:
+
+| Schema Type | Parsing |
+|-------------|---------|
+| `string` | Used as-is |
+| `integer` | `str.parse::<i64>()` |
+| `number` | `str.parse::<f64>()` |
+| `boolean` | `"true"` / `"false"` (case-insensitive) |
+| `null` | Empty string or `"null"` |
+| `array` | JSON parse |
+| `object` | JSON parse |
+
+If a value doesn't match the expected type, an error is returned.
+
+**Data visibility:** Strict single-hop - each node only sees its immediate upstream node's `data` output.
+- No implicit access to trigger payload from non-entry nodes
+- No cross-branch data sharing without explicit join
+- Future: Add `context` escape hatch for explicit cross-node data sharing
+
+**Rationale:** 
+- Separating template resolution from type coercion keeps each stage simple and testable
+- All config values being strings simplifies serialization and UI editing
+- Schema-based coercion catches type errors early with clear error messages
+- Minijinja provides familiar Jinja2 syntax with filters and safe expression evaluation
 
 ### Join Nodes
 
@@ -262,15 +308,53 @@ Each iteration receives context about the current item:
 
 ## Triggers
 
-Triggers define how workflows are initiated. There are two types:
+Triggers define how workflows are initiated and are modeled as a special node type (`NodeType::Trigger`).
 
-### Manual Trigger
+### Trigger Types
 
-User-initiated execution. No configuration needed - simply runs the workflow on demand.
+| Type | Description |
+|------|-------------|
+| Manual | User-initiated via CLI or UI |
+| Poll | Scheduled execution with configurable `interval_ms` |
+| Webhook | HTTP request trigger with specified `method` |
 
-### Component Trigger
+### Built-in vs Component Triggers
 
-A WebAssembly component that handles events (poll ticks or webhook requests). The trigger type and configuration are defined in the component manifest:
+Triggers have a **type** (Manual, Poll, Webhook) and an optional **component**:
+
+- **Built-in (no component):** Simple triggers handled by the engine directly. Manual triggers run on demand. Poll triggers fire at intervals. Webhook triggers fire on HTTP requests.
+- **Component (with wasm):** Custom validation/transformation logic before workflow execution. The component can validate the incoming payload, enrich it, or reject invalid requests.
+
+### Type-Safe Trigger Modeling
+
+Trigger components require both a component reference and a trigger export name:
+
+```rust
+// Config level - ensures component and trigger_name are paired
+pub struct TriggerComponentRef {
+    pub component: ComponentRef,
+    pub trigger_name: String,  // e.g., "row-added"
+}
+
+// Locked level - includes resolved digest
+pub struct LockedTriggerComponent {
+    pub component: LockedComponent,
+    pub trigger_name: String,
+}
+```
+
+This makes invalid states unrepresentable - you cannot specify a component without its trigger export name.
+
+### Trigger Node Validation
+
+The engine validates that:
+- All trigger nodes are entry points (no incoming edges)
+- All entry points are trigger nodes (orphan non-trigger nodes are errors)
+- Trigger component references resolve to valid installed components
+
+### Component Trigger Manifest
+
+The trigger type and configuration are defined in the component manifest:
 
 ```json
 {
@@ -601,6 +685,111 @@ The engine uses OpenTelemetry for logging, tracing, and metrics.
 - Vendor-agnostic (can switch backends without code changes)
 
 Jaeger runs as a container and provides a web UI for visualizing traces, making it ideal for development and debugging workflow executions.
+
+## Workflow Engine
+
+The workflow engine orchestrates execution, handling graph traversal, parallel scheduling, and node execution.
+
+### Engine Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      WorkflowRunner                         │
+│  - owns mpsc channel (sender + receiver)                    │
+│  - run(payload) triggers execution                          │
+│  - start(cancel) runs the execution loop                    │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      WorkflowEngine                         │
+│  - execute(workflow, payload) → ExecutionResult             │
+│  - graph traversal, scheduling                              │
+│  - input resolution via minijinja                           │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    fuscia-task-host                         │
+│  - execute_task(engine, component, state, ctx, data)        │
+│  - handles wasm instantiation + execution                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Separation of concerns:**
+- `WorkflowRunner` handles triggering mechanisms (channels, webhooks, poll timers)
+- `WorkflowEngine` handles execution logic (graph traversal, scheduling, input resolution)
+- `fuscia-task-host` handles wasm component execution
+
+### WorkflowRunner
+
+The runner provides a channel-based interface for triggering workflow executions:
+
+```rust
+impl WorkflowRunner {
+    /// Trigger a workflow execution with the given payload
+    pub async fn run(&self, payload: serde_json::Value) -> Result<(), Error>;
+    
+    /// Get a sender handle for webhooks, poll tasks, etc.
+    pub fn sender(&self) -> mpsc::Sender<serde_json::Value>;
+    
+    /// Start the execution loop (blocks until cancelled)
+    pub async fn start(&mut self, cancel: CancellationToken) -> Result<(), Error>;
+}
+```
+
+This design allows:
+- Direct execution via `run(payload)`
+- Decoupled triggering via `sender()` for webhook handlers, poll schedulers, etc.
+- Graceful shutdown via `CancellationToken`
+
+### Execution Loop
+
+The engine executes workflows using a wave-based approach:
+
+1. Start with trigger nodes (entry points) - their `data` is the trigger payload
+2. Find all "ready" nodes (nodes whose upstream dependencies are complete)
+3. Execute ready nodes in parallel via tokio tasks
+4. Wait for all to complete, store results
+5. Find newly ready nodes and repeat until no more nodes are ready
+
+```rust
+fn find_ready_nodes(graph: &Graph, completed: &HashMap<String, NodeResult>) -> Vec<String> {
+    graph.all_nodes()
+        .filter(|id| !completed.contains_key(id))
+        .filter(|id| graph.upstream(id).iter().all(|up| completed.contains_key(up)))
+        .collect()
+}
+```
+
+### Component Caching
+
+Components are compiled once and cached:
+
+```rust
+pub struct ComponentCache {
+    cache: RwLock<HashMap<ComponentKey, Arc<Component>>>,
+}
+```
+
+- **Compile once:** Wasm compilation is expensive; cache the compiled `Component`
+- **Instantiate fresh:** Each execution gets a fresh instance for isolation
+- **Thread-safe:** `RwLock` allows concurrent reads with exclusive writes
+
+### Execution Errors
+
+```rust
+pub enum ExecutionError {
+    /// Input template resolution failed
+    InputResolution { node_id: String, message: String },
+    /// Component execution failed
+    ComponentExecution { node_id: String, source: HostError },
+    /// Workflow was cancelled
+    Cancelled,
+    /// Node execution timed out
+    Timeout { node_id: String },
+}
+```
 
 ## Wasm Runtime
 

@@ -75,5 +75,5 @@ mod runner;
 pub use cache::{ComponentCache, ComponentKey};
 pub use engine::{EngineConfig, ExecutionResult, NodeResult, WorkflowEngine};
 pub use error::ExecutionError;
-pub use input::resolve_inputs;
+pub use input::{SchemaType, coerce_inputs, resolve_inputs};
 pub use runner::WorkflowRunner;
