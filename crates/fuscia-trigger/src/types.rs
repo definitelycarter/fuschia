@@ -1,4 +1,4 @@
-use fuscia_component::InstalledComponent;
+use fuscia_component_registry::InstalledComponent;
 use serde::{Deserialize, Serialize};
 
 /// Error type for trigger operations.

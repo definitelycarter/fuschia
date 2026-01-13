@@ -1,4 +1,4 @@
-use fuscia_component::InstalledComponent;
+use fuscia_component_registry::InstalledComponent;
 use serde::{Deserialize, Serialize};
 
 /// A task to be executed, derived from a workflow node.

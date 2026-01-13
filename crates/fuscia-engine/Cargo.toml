@@ -9,7 +9,7 @@ fuscia-workflow = { path = "../fuscia-workflow" }
 fuscia-config = { path = "../fuscia-config" }
 fuscia-task-host = { path = "../fuscia-task-host" }
 fuscia-host = { path = "../fuscia-host" }
-fuscia-component = { path = "../fuscia-component" }
+fuscia-component-registry = { path = "../fuscia-component-registry" }
 wasmtime = { version = "40", features = ["component-model", "async"] }
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"

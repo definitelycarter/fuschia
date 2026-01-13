@@ -43,5 +43,5 @@ pub enum ResolveError {
 
   /// Registry error while looking up component.
   #[error("registry error: {0}")]
-  Registry(#[from] fuscia_component::RegistryError),
+  Registry(#[from] fuscia_component_registry::RegistryError),
 }

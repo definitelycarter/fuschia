@@ -1,5 +1,5 @@
 [package]
-name = "fuscia-component"
+name = "fuscia-component-registry"
 edition.workspace = true
 version.workspace = true
 

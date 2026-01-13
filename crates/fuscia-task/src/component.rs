@@ -1,6 +1,6 @@
 use crate::error::TaskError;
 use crate::types::{TaskContext, TaskOutput};
-use fuscia_component::InstalledComponent;
+use fuscia_component_registry::InstalledComponent;
 
 /// Execute a Wasm component task.
 ///

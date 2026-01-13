@@ -4,7 +4,7 @@ use std::pin::Pin;
 
 use async_trait::async_trait;
 
-use fuscia_component::{ComponentRegistry, InstalledComponent};
+use fuscia_component_registry::{ComponentRegistry, InstalledComponent};
 use fuscia_config::{NodeDef, NodeType as ConfigNodeType, WorkflowDef};
 use fuscia_workflow::{
   LockedComponent, LockedLoop, LockedTrigger, LockedTriggerComponent, Node, NodeType, Workflow,
@@ -322,7 +322,7 @@ impl<R: ComponentRegistry> Resolver for StandardResolver<R> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use fuscia_component::{ComponentManifest, RegistryError};
+  use fuscia_component_registry::{ComponentManifest, RegistryError};
   use fuscia_config::{ComponentRef, Edge, JoinStrategy};
   use std::path::PathBuf;
   use std::sync::Mutex;
@@ -350,7 +350,7 @@ mod tests {
       digest: &str,
       task_names: Vec<&str>,
     ) {
-      use fuscia_component::TaskExport;
+      use fuscia_component_registry::TaskExport;
 
       let mut tasks = HashMap::new();
       for task_name in task_names {

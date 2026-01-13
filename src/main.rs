@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use tokio_util::sync::CancellationToken;
 
-use fuscia_component::FsComponentRegistry;
+use fuscia_component_registry::FsComponentRegistry;
 use fuscia_config::WorkflowDef;
 use fuscia_engine::{EngineConfig, WorkflowEngine};
 use fuscia_resolver::{Resolver, StandardResolver};

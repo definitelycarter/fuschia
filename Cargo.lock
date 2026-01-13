@@ -865,7 +865,7 @@ dependencies = [
  "anyhow",
  "clap",
  "dirs",
- "fuscia-component",
+ "fuscia-component-registry",
  "fuscia-config",
  "fuscia-engine",
  "fuscia-resolver",
@@ -887,7 +887,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "fuscia-component"
+name = "fuscia-component-registry"
 version = "0.0.1-alpha.0"
 dependencies = [
  "async-trait",
@@ -910,7 +910,7 @@ dependencies = [
 name = "fuscia-engine"
 version = "0.0.1-alpha.0"
 dependencies = [
- "fuscia-component",
+ "fuscia-component-registry",
  "fuscia-config",
  "fuscia-host",
  "fuscia-task-host",
@@ -943,7 +943,7 @@ name = "fuscia-resolver"
 version = "0.0.1-alpha.0"
 dependencies = [
  "async-trait",
- "fuscia-component",
+ "fuscia-component-registry",
  "fuscia-config",
  "fuscia-workflow",
  "serde_json",
@@ -967,7 +967,7 @@ dependencies = [
 name = "fuscia-task"
 version = "0.0.1-alpha.0"
 dependencies = [
- "fuscia-component",
+ "fuscia-component-registry",
  "reqwest",
  "serde",
  "serde_json",
@@ -993,7 +993,7 @@ dependencies = [
 name = "fuscia-trigger"
 version = "0.0.1-alpha.0"
 dependencies = [
- "fuscia-component",
+ "fuscia-component-registry",
  "serde",
  "serde_json",
  "thiserror 2.0.17",

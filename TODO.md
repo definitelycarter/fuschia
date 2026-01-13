@@ -8,7 +8,7 @@
 | `fuscia-artifact` | Artifact storage trait + FsStore implementation | Done |
 | `fuscia-store` | Workflow execution/task storage trait + SqliteStore | Done |
 | `fuscia-workflow` | Locked/resolved workflow with graph traversal | Done |
-| `fuscia-component` | Component manifest, registry trait, FsComponentRegistry. Components can export multiple tasks and triggers. | Done |
+| `fuscia-component-registry` | Component manifest, registry trait, FsComponentRegistry. Components can export multiple tasks and triggers. | Done |
 | `fuscia-resolver` | Convert `WorkflowDef` (config) → `Workflow` (locked), validate graph | Done |
 | `fuscia-task` | Task types (Http, Component), TaskContext with pre-resolved inputs, TaskOutput with artifacts | Done |
 | `fuscia-trigger` | Trigger types (Manual, Component), TriggerEvent for workflow initiation | Done |
@@ -29,15 +29,15 @@
 | Feature | Description | Notes |
 |---------|-------------|-------|
 | Config → Workflow locking | Validate graph (DAG), resolve component refs, detect cycles | `fuscia-resolver` |
-| Component registry | Install/list/remove components, lookup by name+version | `fuscia-component` |
-| Component manifest | Name, version, description, digest, capabilities, tasks, triggers | `fuscia-component` |
+| Component registry | Install/list/remove components, lookup by name+version | `fuscia-component-registry` |
+| Component manifest | Name, version, description, digest, capabilities, tasks, triggers | `fuscia-component-registry` |
 | Task types | Http and Component task variants | `fuscia-task` |
 | Task context | Pre-resolved inputs passed to task execution | `fuscia-task` |
 | Http executor | Built-in HTTP request executor | `fuscia-task` |
 | Trigger types | Manual and Component trigger variants | `fuscia-trigger` |
 | Trigger events | TriggerEvent for workflow initiation | `fuscia-trigger` |
-| Component capabilities | allowed_hosts and allowed_paths for security sandboxing | `fuscia-component` |
-| TriggerType in manifest | Poll (interval_ms) and Webhook (method) defined in component manifest | `fuscia-component` |
+| Component capabilities | allowed_hosts and allowed_paths for security sandboxing | `fuscia-component-registry` |
+| TriggerType in manifest | Poll (interval_ms) and Webhook (method) defined in component manifest | `fuscia-component-registry` |
 | WIT task interface | Task execute function with context (execution-id, node-id, task-id) | `wit/task.wit` |
 | WIT trigger interface | Trigger handle function with event variants (poll, webhook) | `wit/trigger.wit` |
 | WIT host imports | Key-value store and config imports for components | `wit/kv.wit`, `wit/config.wit` |

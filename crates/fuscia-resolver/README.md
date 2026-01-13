@@ -70,7 +70,7 @@ Each nested workflow undergoes the same validation (DAG check, component resolut
 ## Usage
 
 ```rust
-use fuscia_component::FsComponentRegistry;
+use fuscia_component_registry::FsComponentRegistry;
 use fuscia_resolver::{Resolver, StandardResolver};
 
 let registry = FsComponentRegistry::new("~/.fuscia/components");

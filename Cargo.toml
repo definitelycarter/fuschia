@@ -16,7 +16,7 @@ exclude = [
 ]
 members = [
   "crates/fuscia-artifact",
-  "crates/fuscia-component",
+  "crates/fuscia-component-registry",
   "crates/fuscia-config",
   "crates/fuscia-engine",
   "crates/fuscia-host",
@@ -39,6 +39,6 @@ serde_json = "1"
 anyhow = "1"
 
 fuscia-config = { path = "crates/fuscia-config" }
-fuscia-component = { path = "crates/fuscia-component" }
+fuscia-component-registry = { path = "crates/fuscia-component-registry" }
 fuscia-resolver = { path = "crates/fuscia-resolver" }
 fuscia-engine = { path = "crates/fuscia-engine" }
