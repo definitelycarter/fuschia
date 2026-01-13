@@ -1,10 +1,10 @@
 [package]
-name = "fuscia"
+name = "fuschia"
 edition.workspace = true
 version.workspace = true
 
 [[bin]]
-name = "fuscia"
+name = "fuschia"
 path = "src/main.rs"
 
 [workspace]
@@ -15,19 +15,19 @@ exclude = [
   "test-components/test-trigger-component",
 ]
 members = [
-  "crates/fuscia-artifact",
-  "crates/fuscia-component-registry",
-  "crates/fuscia-config",
-  "crates/fuscia-engine",
-  "crates/fuscia-host",
-  "crates/fuscia-resolver",
-  "crates/fuscia-store",
-  "crates/fuscia-task",
-  "crates/fuscia-task-host",
-  "crates/fuscia-trigger",
-  "crates/fuscia-trigger-host",
-  "crates/fuscia-workflow",
-  "crates/fuscia-world",
+  "crates/fuschia-artifact",
+  "crates/fuschia-component-registry",
+  "crates/fuschia-config",
+  "crates/fuschia-engine",
+  "crates/fuschia-host",
+  "crates/fuschia-resolver",
+  "crates/fuschia-store",
+  "crates/fuschia-task",
+  "crates/fuschia-task-host",
+  "crates/fuschia-trigger",
+  "crates/fuschia-trigger-host",
+  "crates/fuschia-workflow",
+  "crates/fuschia-world",
 ]
 
 [dependencies]
@@ -38,7 +38,7 @@ tokio-util = "0.7"
 serde_json = "1"
 anyhow = "1"
 
-fuscia-config = { path = "crates/fuscia-config" }
-fuscia-component-registry = { path = "crates/fuscia-component-registry" }
-fuscia-resolver = { path = "crates/fuscia-resolver" }
-fuscia-engine = { path = "crates/fuscia-engine" }
+fuschia-config = { path = "crates/fuschia-config" }
+fuschia-component-registry = { path = "crates/fuschia-component-registry" }
+fuschia-resolver = { path = "crates/fuschia-resolver" }
+fuschia-engine = { path = "crates/fuschia-engine" }

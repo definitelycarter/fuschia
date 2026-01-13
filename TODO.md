@@ -4,121 +4,121 @@
 
 | Crate | Description | Status |
 |-------|-------------|--------|
-| `fuscia-config` | Serializable workflow configuration (JSON/YAML) | Done |
-| `fuscia-artifact` | Artifact storage trait + FsStore implementation | Done |
-| `fuscia-store` | Workflow execution/task storage trait + SqliteStore | Done |
-| `fuscia-workflow` | Locked/resolved workflow with graph traversal | Done |
-| `fuscia-component-registry` | Component manifest, registry trait, FsComponentRegistry. Components can export multiple tasks and triggers. | Done |
-| `fuscia-resolver` | Convert `WorkflowDef` (config) → `Workflow` (locked), validate graph | Done |
-| `fuscia-task` | Task types (Http, Component), TaskContext with pre-resolved inputs, TaskOutput with artifacts | Done |
-| `fuscia-trigger` | Trigger types (Manual, Component), TriggerEvent for workflow initiation | Done |
-| `fuscia-world` | Wasmtime bindgen host world, generates Rust bindings from WIT interfaces | Done |
-| `fuscia-host` | Shared wasmtime infrastructure (Engine, Store setup, epoch timeout, pluggable KvStore trait) | Done |
-| `fuscia-task-host` | Task component execution, binds to task-component world, implements kv/config/log host imports | Done |
-| `fuscia-trigger-host` | Trigger component execution, binds to trigger-component world, implements kv/config/log host imports | Done |
-| `fuscia-engine` | Workflow orchestration, graph execution, parallel scheduling, input resolution | Done |
+| `fuschia-config` | Serializable workflow configuration (JSON/YAML) | Done |
+| `fuschia-artifact` | Artifact storage trait + FsStore implementation | Done |
+| `fuschia-store` | Workflow execution/task storage trait + SqliteStore | Done |
+| `fuschia-workflow` | Locked/resolved workflow with graph traversal | Done |
+| `fuschia-component-registry` | Component manifest, registry trait, FsComponentRegistry. Components can export multiple tasks and triggers. | Done |
+| `fuschia-resolver` | Convert `WorkflowDef` (config) → `Workflow` (locked), validate graph | Done |
+| `fuschia-task` | Task types (Http, Component), TaskContext with pre-resolved inputs, TaskOutput with artifacts | Done |
+| `fuschia-trigger` | Trigger types (Manual, Component), TriggerEvent for workflow initiation | Done |
+| `fuschia-world` | Wasmtime bindgen host world, generates Rust bindings from WIT interfaces | Done |
+| `fuschia-host` | Shared wasmtime infrastructure (Engine, Store setup, epoch timeout, pluggable KvStore trait) | Done |
+| `fuschia-task-host` | Task component execution, binds to task-component world, implements kv/config/log host imports | Done |
+| `fuschia-trigger-host` | Trigger component execution, binds to trigger-component world, implements kv/config/log host imports | Done |
+| `fuschia-engine` | Workflow orchestration, graph execution, parallel scheduling, input resolution | Done |
 
 ## Crates - Outstanding
 
 | Crate | Description | Priority |
 |-------|-------------|----------|
-| `fuscia-cli` | Command-line interface | Medium |
+| `fuschia-cli` | Command-line interface | Medium |
 
 ## Features - Completed
 
 | Feature | Description | Notes |
 |---------|-------------|-------|
-| Config → Workflow locking | Validate graph (DAG), resolve component refs, detect cycles | `fuscia-resolver` |
-| Component registry | Install/list/remove components, lookup by name+version | `fuscia-component-registry` |
-| Component manifest | Name, version, description, digest, capabilities, tasks, triggers | `fuscia-component-registry` |
-| Task types | Http and Component task variants | `fuscia-task` |
-| Task context | Pre-resolved inputs passed to task execution | `fuscia-task` |
-| Http executor | Built-in HTTP request executor | `fuscia-task` |
-| Trigger types | Manual and Component trigger variants | `fuscia-trigger` |
-| Trigger events | TriggerEvent for workflow initiation | `fuscia-trigger` |
-| Component capabilities | allowed_hosts and allowed_paths for security sandboxing | `fuscia-component-registry` |
-| TriggerType in manifest | Poll (interval_ms) and Webhook (method) defined in component manifest | `fuscia-component-registry` |
+| Config → Workflow locking | Validate graph (DAG), resolve component refs, detect cycles | `fuschia-resolver` |
+| Component registry | Install/list/remove components, lookup by name+version | `fuschia-component-registry` |
+| Component manifest | Name, version, description, digest, capabilities, tasks, triggers | `fuschia-component-registry` |
+| Task types | Http and Component task variants | `fuschia-task` |
+| Task context | Pre-resolved inputs passed to task execution | `fuschia-task` |
+| Http executor | Built-in HTTP request executor | `fuschia-task` |
+| Trigger types | Manual and Component trigger variants | `fuschia-trigger` |
+| Trigger events | TriggerEvent for workflow initiation | `fuschia-trigger` |
+| Component capabilities | allowed_hosts and allowed_paths for security sandboxing | `fuschia-component-registry` |
+| TriggerType in manifest | Poll (interval_ms) and Webhook (method) defined in component manifest | `fuschia-component-registry` |
 | WIT task interface | Task execute function with context (execution-id, node-id, task-id) | `wit/task.wit` |
 | WIT trigger interface | Trigger handle function with event variants (poll, webhook) | `wit/trigger.wit` |
 | WIT host imports | Key-value store and config imports for components | `wit/kv.wit`, `wit/config.wit` |
 | WIT log interface | Logging interface that routes to OpenTelemetry | `wit/log.wit` |
 | WIT platform world | Shared world with common imports (kv, config, log, http) | `wit/world.wit` |
-| Host bindings generation | wasmtime bindgen generates Rust traits from WIT | `fuscia-world` |
-| Pluggable KV store | Async KvStore trait with InMemoryKvStore implementation | `fuscia-host` |
-| Engine configuration | Wasmtime Engine with epoch interruption and async support | `fuscia-host` |
-| Host state management | HostState generic over KvStore, Store creation helpers | `fuscia-host` |
-| Task component execution | Load, instantiate, execute task components via wasmtime | `fuscia-task-host` |
-| Trigger component execution | Load, instantiate, execute trigger components via wasmtime | `fuscia-trigger-host` |
-| WASI Preview 2 support | WasiView, ResourceTable, p2::add_to_linker_async for component WASI imports | `fuscia-task-host`, `fuscia-trigger-host` |
+| Host bindings generation | wasmtime bindgen generates Rust traits from WIT | `fuschia-world` |
+| Pluggable KV store | Async KvStore trait with InMemoryKvStore implementation | `fuschia-host` |
+| Engine configuration | Wasmtime Engine with epoch interruption and async support | `fuschia-host` |
+| Host state management | HostState generic over KvStore, Store creation helpers | `fuschia-host` |
+| Task component execution | Load, instantiate, execute task components via wasmtime | `fuschia-task-host` |
+| Trigger component execution | Load, instantiate, execute trigger components via wasmtime | `fuschia-trigger-host` |
+| WASI Preview 2 support | WasiView, ResourceTable, p2::add_to_linker_async for component WASI imports | `fuschia-task-host`, `fuschia-trigger-host` |
 | Test wasm components | test-task-component and test-trigger-component for integration testing | `test-components/` |
-| Integration tests | Tests for task and trigger host execution with real wasm components | `fuscia-task-host`, `fuscia-trigger-host` |
-| Workflow engine | Graph traversal with parallel node execution via tokio tasks | `fuscia-engine` |
-| WorkflowRunner | Channel-based workflow triggering with mpsc sender/receiver | `fuscia-engine` |
-| Input resolution | Minijinja templating for node inputs (`{{ field }}`, `{{ name \| upper }}`) | `fuscia-engine` |
-| Component caching | Compile wasm once, instantiate on-demand per execution | `fuscia-engine` |
-| Cancellation support | CancellationToken for workflow-level and epoch interruption for node-level | `fuscia-engine` |
-| Parallel branch execution | Spawn concurrent tokio tasks for independent graph branches | `fuscia-engine` |
-| NodeType::Trigger | Proper trigger node type with TriggerType (Manual, Poll, Webhook) | `fuscia-config`, `fuscia-workflow` |
-| TriggerComponentRef | Type-safe pairing of component + trigger_name for trigger nodes | `fuscia-config` |
-| LockedTriggerComponent | Locked trigger component with digest and trigger export name | `fuscia-workflow` |
-| Orphan node detection | Validation that non-trigger nodes must have incoming edges | `fuscia-engine` |
-| Input type coercion | Parse resolved template strings to typed JSON values (string, number, boolean, etc.) | `fuscia-engine` |
-| Simplified InputValue | InputValue is now a type alias for String (all inputs are templates) | `fuscia-config` |
-| Schema in LockedComponent | `input_schema` copied from manifest at lock time for self-contained execution | `fuscia-workflow`, `fuscia-resolver` |
-| Task/trigger name in locked types | `task_name` and `trigger_name` identify which export to use from component | `fuscia-config`, `fuscia-workflow` |
+| Integration tests | Tests for task and trigger host execution with real wasm components | `fuschia-task-host`, `fuschia-trigger-host` |
+| Workflow engine | Graph traversal with parallel node execution via tokio tasks | `fuschia-engine` |
+| WorkflowRunner | Channel-based workflow triggering with mpsc sender/receiver | `fuschia-engine` |
+| Input resolution | Minijinja templating for node inputs (`{{ field }}`, `{{ name \| upper }}`) | `fuschia-engine` |
+| Component caching | Compile wasm once, instantiate on-demand per execution | `fuschia-engine` |
+| Cancellation support | CancellationToken for workflow-level and epoch interruption for node-level | `fuschia-engine` |
+| Parallel branch execution | Spawn concurrent tokio tasks for independent graph branches | `fuschia-engine` |
+| NodeType::Trigger | Proper trigger node type with TriggerType (Manual, Poll, Webhook) | `fuschia-config`, `fuschia-workflow` |
+| TriggerComponentRef | Type-safe pairing of component + trigger_name for trigger nodes | `fuschia-config` |
+| LockedTriggerComponent | Locked trigger component with digest and trigger export name | `fuschia-workflow` |
+| Orphan node detection | Validation that non-trigger nodes must have incoming edges | `fuschia-engine` |
+| Input type coercion | Parse resolved template strings to typed JSON values (string, number, boolean, etc.) | `fuschia-engine` |
+| Simplified InputValue | InputValue is now a type alias for String (all inputs are templates) | `fuschia-config` |
+| Schema in LockedComponent | `input_schema` copied from manifest at lock time for self-contained execution | `fuschia-workflow`, `fuschia-resolver` |
+| Task/trigger name in locked types | `task_name` and `trigger_name` identify which export to use from component | `fuschia-config`, `fuschia-workflow` |
 
 ## Features - Outstanding
 
 | Feature | Description | Notes |
 |---------|-------------|-------|
 | HTTP outbound for components | Add `wasi:http/outgoing-handler` to platform world | Requires wasmtime-wasi-http integration |
-| Join node handling | Wait for branches, apply strategy (All/Any) | Needs `fuscia-engine` enhancement |
-| Loop execution | Iterate over collection, execute nested workflow | Needs `fuscia-engine` enhancement |
-| Retry logic | Retry failed nodes per policy | Needs `fuscia-engine` enhancement |
+| Join node handling | Wait for branches, apply strategy (All/Any) | Needs `fuschia-engine` enhancement |
+| Loop execution | Iterate over collection, execute nested workflow | Needs `fuschia-engine` enhancement |
+| Retry logic | Retry failed nodes per policy | Needs `fuschia-engine` enhancement |
 | Observability | OpenTelemetry tracing to Jaeger | Needs integration across crates |
-| Component packaging | Bundle manifest + wasm + readme + assets into .fcpkg | Needs `fuscia-cli` |
-| Store integration | Persist execution records to fuscia-store | Needs `fuscia-engine` enhancement |
+| Component packaging | Bundle manifest + wasm + readme + assets into .fcpkg | Needs `fuschia-cli` |
+| Store integration | Persist execution records to fuschia-store | Needs `fuschia-engine` enhancement |
 
 ## Gaps - Existing Crates
 
-### fuscia-config
+### fuschia-config
 
 | Gap | Description | Priority |
 |-----|-------------|----------|
 | Missing retry fields on NodeDef | `retry_backoff` and `retry_initial_delay_ms` only on `WorkflowDef`, not `NodeDef` | Medium |
 
-### fuscia-workflow
+### fuschia-workflow
 
 | Gap | Description | Priority |
 |-----|-------------|----------|
 | Graph methods return `&[]` for missing nodes | `downstream()`/`upstream()` can't distinguish "no edges" vs "node doesn't exist" | Medium |
 
-### fuscia-resolver
+### fuschia-resolver
 
 | Gap | Description | Priority |
 |-----|-------------|----------|
 | Join node validation | Doesn't validate that `Join` nodes actually have multiple incoming edges | Medium |
 
-### fuscia-engine
+### fuschia-engine
 
 | Gap | Description | Priority |
 |-----|-------------|----------|
 | Required field validation | No validation that required input fields are present | Medium |
 | Digest verification | Verify component wasm SHA-256 against `LockedComponent.digest` at load time | High |
 
-### fuscia-component
+### fuschia-component
 
 | Gap | Description | Priority |
 |-----|-------------|----------|
 | Digest verification | Digest in manifest never verified against actual wasm binary | Medium |
 
-### fuscia-artifact
+### fuschia-artifact
 
 | Gap | Description | Priority |
 |-----|-------------|----------|
 | Content-type not persisted | `FsStore` accepts `content_type` but doesn't store it anywhere | Medium |
 
-### fuscia-store
+### fuschia-store
 
 | Gap | Description | Priority |
 |-----|-------------|----------|
@@ -134,11 +134,11 @@ The wasmtime hosting layer is split into three crates:
 
 | Crate | Responsibility |
 |-------|----------------|
-| `fuscia-host` | Shared wasmtime infrastructure: Engine configuration, Store setup, epoch-based timeout utilities, common host import implementations (kv, config, log) |
-| `fuscia-task-host` | Task-specific execution. Imports `fuscia-host`, binds to `task-component` world, invokes `task.execute` |
-| `fuscia-trigger-host` | Trigger-specific execution. Imports `fuscia-host`, binds to `trigger-component` world, invokes `trigger.handle` |
+| `fuschia-host` | Shared wasmtime infrastructure: Engine configuration, Store setup, epoch-based timeout utilities, common host import implementations (kv, config, log) |
+| `fuschia-task-host` | Task-specific execution. Imports `fuschia-host`, binds to `task-component` world, invokes `task.execute` |
+| `fuschia-trigger-host` | Trigger-specific execution. Imports `fuschia-host`, binds to `trigger-component` world, invokes `trigger.handle` |
 
-**Rationale:** Clean separation - `fuscia-host` provides wasmtime foundation without knowing about tasks/triggers. Specialized crates compose it with their WIT bindings.
+**Rationale:** Clean separation - `fuschia-host` provides wasmtime foundation without knowing about tasks/triggers. Specialized crates compose it with their WIT bindings.
 
 ### Workflow Engine Architecture
 
@@ -256,19 +256,19 @@ enum ExecutionError {
 
 | Task | Description | Priority |
 |------|-------------|----------|
-| Rename repo | Rename from `fuscia` to `fuschia` (fix spelling) | Low |
+| Rename repo | Rename from `fuschia` to `fuschia` (fix spelling) | Low |
 
 ## Open Questions
 
 | Question | Context |
 |----------|---------|
 | HTTP outbound filtering | How to enforce `allowed_hosts` with `wasmtime-wasi-http`? Custom `WasiHttpView` wrapper or implement own handler? |
-| Shared Engine ownership | Should `fuscia-host` own the Engine singleton, or should caller create and pass it in? |
-| Path expression parsing location | Should live in `fuscia-config` (parse at config time) or `fuscia-task` (parse at execution)? |
+| Shared Engine ownership | Should `fuschia-host` own the Engine singleton, or should caller create and pass it in? |
+| Path expression parsing location | Should live in `fuschia-config` (parse at config time) or `fuschia-task` (parse at execution)? |
 | Graph method return types | Should `downstream()`/`upstream()` return `Option<&[String]>` instead of `&[]`? |
 | Loop item injection | How does `{ "item": {...}, "index": 0 }` get passed to nested workflow inputs? |
 | Join node output shape | What's the output - aggregated map of branch outputs? Pass-through? |
 | WorkflowExecution.config type | Should store original `WorkflowDef` or locked `Workflow` for audit trail? |
 | KV store value types | Should kv.wit support complex types (json, number, bool, object) or just strings? |
 | WorkflowRunner naming | Current name may be confusing - reconsider naming |
-| Distributed execution model | `fuscia start` daemon mode for production: init container pulls components at deploy time, pods wait for messages from broker. Each workflow node gets pre-warmed pods. Message format: `{execution_id, task_id, input}`. Orchestrator resolves templates, workers just execute. |
+| Distributed execution model | `fuschia start` daemon mode for production: init container pulls components at deploy time, pods wait for messages from broker. Each workflow node gets pre-warmed pods. Message format: `{execution_id, task_id, input}`. Orchestrator resolves templates, workers just execute. |

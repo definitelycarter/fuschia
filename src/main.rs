@@ -5,17 +5,17 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use tokio_util::sync::CancellationToken;
 
-use fuscia_component_registry::FsComponentRegistry;
-use fuscia_config::WorkflowDef;
-use fuscia_engine::{EngineConfig, WorkflowEngine};
-use fuscia_resolver::{Resolver, StandardResolver};
+use fuschia_component_registry::FsComponentRegistry;
+use fuschia_config::WorkflowDef;
+use fuschia_engine::{EngineConfig, WorkflowEngine};
+use fuschia_resolver::{Resolver, StandardResolver};
 
 /// Fuscia - A workflow engine built on WebAssembly components
 #[derive(Parser)]
-#[command(name = "fuscia")]
+#[command(name = "fuschia")]
 #[command(version, about, long_about = None)]
 struct Cli {
-  /// Path to the data directory (default: ~/.fuscia)
+  /// Path to the data directory (default: ~/.fuschia)
   #[arg(long, global = true)]
   data_dir: Option<PathBuf>,
 
@@ -57,7 +57,7 @@ fn main() -> Result<()> {
   let data_dir = cli.data_dir.unwrap_or_else(|| {
     dirs::home_dir()
       .expect("could not determine home directory")
-      .join(".fuscia")
+      .join(".fuschia")
   });
 
   match cli.command {
@@ -73,7 +73,7 @@ fn main() -> Result<()> {
       }
     },
     None => {
-      println!("fuscia - use --help to see available commands");
+      println!("fuschia - use --help to see available commands");
     }
   }
 

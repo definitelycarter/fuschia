@@ -1,0 +1,24 @@
+package fuschia:trigger@0.1.0;
+
+interface trigger {
+  /// Simplified webhook request data.
+  /// Full wasi:http/types support will be added later.
+  record webhook-request {
+    method: string,
+    path: string,
+    headers: list<tuple<string, string>>,
+    body: option<string>,
+  }
+
+  variant event {
+    poll,
+    webhook(webhook-request),
+  }
+
+  variant status {
+    completed(string),
+    pending,
+  }
+
+  handle: func(event: event) -> result<status, string>;
+}

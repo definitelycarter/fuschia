@@ -859,23 +859,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "fuscia"
+name = "fuschia"
 version = "0.0.1-alpha.0"
 dependencies = [
  "anyhow",
  "clap",
  "dirs",
- "fuscia-component-registry",
- "fuscia-config",
- "fuscia-engine",
- "fuscia-resolver",
+ "fuschia-component-registry",
+ "fuschia-config",
+ "fuschia-engine",
+ "fuschia-resolver",
  "serde_json",
  "tokio",
  "tokio-util",
 ]
 
 [[package]]
-name = "fuscia-artifact"
+name = "fuschia-artifact"
 version = "0.0.1-alpha.0"
 dependencies = [
  "async-trait",
@@ -887,11 +887,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "fuscia-component-registry"
+name = "fuschia-component-registry"
 version = "0.0.1-alpha.0"
 dependencies = [
  "async-trait",
- "fuscia-config",
+ "fuschia-config",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
@@ -899,7 +899,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "fuscia-config"
+name = "fuschia-config"
 version = "0.0.1-alpha.0"
 dependencies = [
  "serde",
@@ -907,14 +907,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "fuscia-engine"
+name = "fuschia-engine"
 version = "0.0.1-alpha.0"
 dependencies = [
- "fuscia-component-registry",
- "fuscia-config",
- "fuscia-host",
- "fuscia-task-host",
- "fuscia-workflow",
+ "fuschia-component-registry",
+ "fuschia-config",
+ "fuschia-host",
+ "fuschia-task-host",
+ "fuschia-workflow",
  "futures",
  "minijinja",
  "serde",
@@ -929,7 +929,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "fuscia-host"
+name = "fuschia-host"
 version = "0.0.1-alpha.0"
 dependencies = [
  "thiserror 2.0.17",
@@ -939,20 +939,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "fuscia-resolver"
+name = "fuschia-resolver"
 version = "0.0.1-alpha.0"
 dependencies = [
  "async-trait",
- "fuscia-component-registry",
- "fuscia-config",
- "fuscia-workflow",
+ "fuschia-component-registry",
+ "fuschia-config",
+ "fuschia-workflow",
  "serde_json",
  "thiserror 2.0.17",
  "tokio",
 ]
 
 [[package]]
-name = "fuscia-store"
+name = "fuschia-store"
 version = "0.0.1-alpha.0"
 dependencies = [
  "async-trait",
@@ -964,10 +964,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "fuscia-task"
+name = "fuschia-task"
 version = "0.0.1-alpha.0"
 dependencies = [
- "fuscia-component-registry",
+ "fuschia-component-registry",
  "reqwest",
  "serde",
  "serde_json",
@@ -976,10 +976,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "fuscia-task-host"
+name = "fuschia-task-host"
 version = "0.0.1-alpha.0"
 dependencies = [
- "fuscia-host",
+ "fuschia-host",
  "futures",
  "serde_json",
  "thiserror 2.0.17",
@@ -990,20 +990,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "fuscia-trigger"
+name = "fuschia-trigger"
 version = "0.0.1-alpha.0"
 dependencies = [
- "fuscia-component-registry",
+ "fuschia-component-registry",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
 ]
 
 [[package]]
-name = "fuscia-trigger-host"
+name = "fuschia-trigger-host"
 version = "0.0.1-alpha.0"
 dependencies = [
- "fuscia-host",
+ "fuschia-host",
  "futures",
  "serde_json",
  "thiserror 2.0.17",
@@ -1014,17 +1014,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "fuscia-workflow"
+name = "fuschia-workflow"
 version = "0.0.1-alpha.0"
 dependencies = [
- "fuscia-config",
+ "fuschia-config",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
 ]
 
 [[package]]
-name = "fuscia-world"
+name = "fuschia-world"
 version = "0.0.1-alpha.0"
 dependencies = [
  "wasmtime",

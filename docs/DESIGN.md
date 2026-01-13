@@ -203,7 +203,7 @@ my-component-1.0.0.fcpkg
 Installed components live in a predictable directory structure:
 
 ```
-~/.fuscia/components/
+~/.fuschia/components/
 ├── my-org--http-fetch--1.0.0/
 │   ├── manifest.json
 │   ├── component.wasm
@@ -563,8 +563,8 @@ The engine manages all artifact storage and path resolution. Wasm components nev
 Artifacts are not automatically deleted. Cleanup is managed manually via CLI:
 
 **CLI Commands:**
-- Query completed workflows by time range (e.g., `fuscia workflows list --completed-before 2026-01-01`)
-- Delete artifacts for a workflow (e.g., `fuscia artifacts delete --workflow-id wf_abc`)
+- Query completed workflows by time range (e.g., `fuschia workflows list --completed-before 2026-01-01`)
+- Delete artifacts for a workflow (e.g., `fuschia artifacts delete --workflow-id wf_abc`)
 
 **Separation of Concerns:**
 - Deleting artifacts does **not** delete workflow execution records
@@ -717,7 +717,7 @@ The workflow engine orchestrates execution, handling graph traversal, parallel s
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    fuscia-task-host                         │
+│                    fuschia-task-host                         │
 │  - execute_task(engine, component, state, ctx, data)        │
 │  - handles wasm instantiation + execution                   │
 └─────────────────────────────────────────────────────────────┘
@@ -726,7 +726,7 @@ The workflow engine orchestrates execution, handling graph traversal, parallel s
 **Separation of concerns:**
 - `WorkflowRunner` handles triggering mechanisms (channels, webhooks, poll timers)
 - `WorkflowEngine` handles execution logic (graph traversal, scheduling, input resolution)
-- `fuscia-task-host` handles wasm component execution
+- `fuschia-task-host` handles wasm component execution
 
 ### WorkflowRunner
 
@@ -806,11 +806,11 @@ The wasmtime hosting layer is split into three crates:
 
 | Crate | Responsibility |
 |-------|----------------|
-| `fuscia-host` | Shared wasmtime infrastructure: Engine configuration, Store setup, epoch-based timeout utilities, pluggable KvStore trait |
-| `fuscia-task-host` | Task-specific execution. Imports `fuscia-host`, binds to `task-component` world, invokes `task.execute` |
-| `fuscia-trigger-host` | Trigger-specific execution. Imports `fuscia-host`, binds to `trigger-component` world, invokes `trigger.handle` |
+| `fuschia-host` | Shared wasmtime infrastructure: Engine configuration, Store setup, epoch-based timeout utilities, pluggable KvStore trait |
+| `fuschia-task-host` | Task-specific execution. Imports `fuschia-host`, binds to `task-component` world, invokes `task.execute` |
+| `fuschia-trigger-host` | Trigger-specific execution. Imports `fuschia-host`, binds to `trigger-component` world, invokes `trigger.handle` |
 
-**Rationale:** `fuscia-host` provides the wasmtime foundation without knowing about tasks or triggers. The specialized crates compose it with their WIT world bindings.
+**Rationale:** `fuschia-host` provides the wasmtime foundation without knowing about tasks or triggers. The specialized crates compose it with their WIT world bindings.
 
 ### Component Lifecycle
 
@@ -823,9 +823,9 @@ Components have access to these host-provided imports:
 
 | Import | Scope | Description |
 |--------|-------|-------------|
-| `fuscia:kv/kv` | Per-execution | Key-value store isolated to the workflow execution. Pluggable via `KvStore` trait (InMemoryKvStore for local, Redis for production). |
-| `fuscia:config/config` | Per-component | Configuration values from the workflow node definition |
-| `fuscia:log/log` | Per-execution | Logging routed to OpenTelemetry with execution context |
+| `fuschia:kv/kv` | Per-execution | Key-value store isolated to the workflow execution. Pluggable via `KvStore` trait (InMemoryKvStore for local, Redis for production). |
+| `fuschia:config/config` | Per-component | Configuration values from the workflow node definition |
+| `fuschia:log/log` | Per-execution | Logging routed to OpenTelemetry with execution context |
 | `wasi:http/outgoing-handler` | Per-component | HTTP requests filtered by `allowed_hosts` from manifest. **Not yet implemented** - requires wasmtime-wasi-http integration. |
 
 ### Error Handling
