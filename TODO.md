@@ -252,12 +252,6 @@ enum ExecutionError {
 }
 ```
 
-## Housekeeping
-
-| Task | Description | Priority |
-|------|-------------|----------|
-| Rename repo | Rename repo directory from `fuscia` to `fuschia` | Low |
-
 ## Open Questions
 
 | Question | Context |
