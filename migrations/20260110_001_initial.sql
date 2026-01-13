@@ -1,4 +1,4 @@
--- Initial schema for Fuscia workflow execution storage
+-- Initial schema for Fuschia workflow execution storage
 
 CREATE TABLE workflow_executions (
     execution_id TEXT PRIMARY KEY,

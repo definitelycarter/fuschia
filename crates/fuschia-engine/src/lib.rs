@@ -1,4 +1,4 @@
-//! Fuscia Workflow Engine
+//! Fuschia Workflow Engine
 //!
 //! This crate provides the workflow execution engine for fuschia.
 //! It handles graph traversal, input resolution, and component execution.

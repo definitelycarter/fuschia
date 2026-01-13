@@ -1,6 +1,6 @@
-//! Fuscia Config
+//! Fuschia Config
 //!
-//! This crate contains the serializable workflow configuration types for Fuscia.
+//! This crate contains the serializable workflow configuration types for Fuschia.
 //! These types represent workflow definitions before they are loaded and resolved
 //! by the engine.
 //!

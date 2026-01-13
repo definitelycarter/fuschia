@@ -1,4 +1,4 @@
-//! Fuscia Store
+//! Fuschia Store
 //!
 //! This crate provides the storage trait and implementations for workflow
 //! executions and tasks. Data is persisted to a database (SQLite or PostgreSQL).

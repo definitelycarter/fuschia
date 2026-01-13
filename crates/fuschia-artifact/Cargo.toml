@@ -2,7 +2,7 @@
 name = "fuschia-artifact"
 edition.workspace = true
 version.workspace = true
-description = "Artifact storage trait and implementations for Fuscia"
+description = "Artifact storage trait and implementations for Fuschia"
 
 [dependencies]
 async-trait = "0.1"

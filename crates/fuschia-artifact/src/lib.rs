@@ -1,6 +1,6 @@
-//! Fuscia Artifact
+//! Fuschia Artifact
 //!
-//! This crate provides the artifact storage trait and implementations for Fuscia.
+//! This crate provides the artifact storage trait and implementations for Fuschia.
 //! Artifacts are binary blobs (images, files, large data) that are stored separately
 //! from workflow execution data.
 //!

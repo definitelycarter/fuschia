@@ -1,6 +1,6 @@
-//! Fuscia Workflow
+//! Fuschia Workflow
 //!
-//! This crate provides the "locked" workflow representation for Fuscia.
+//! This crate provides the "locked" workflow representation for Fuschia.
 //! A locked workflow is a validated, resolved form of a workflow configuration
 //! that is ready for execution.
 //!

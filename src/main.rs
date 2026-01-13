@@ -10,7 +10,7 @@ use fuschia_config::WorkflowDef;
 use fuschia_engine::{EngineConfig, WorkflowEngine};
 use fuschia_resolver::{Resolver, StandardResolver};
 
-/// Fuscia - A workflow engine built on WebAssembly components
+/// Fuschia - A workflow engine built on WebAssembly components
 #[derive(Parser)]
 #[command(name = "fuschia")]
 #[command(version, about, long_about = None)]

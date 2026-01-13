@@ -1,4 +1,4 @@
-# Fuscia
+# Fuschia
 
 A workflow engine built on WebAssembly components.
 

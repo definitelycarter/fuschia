@@ -1,6 +1,6 @@
-# Fuscia Design Document
+# Fuschia Design Document
 
-Fuscia is a workflow engine similar to n8n, built on WebAssembly components using WIT (WebAssembly Interface Types). Each workflow node is a Wasm component with explicitly defined capabilities.
+Fuschia is a workflow engine similar to n8n, built on WebAssembly components using WIT (WebAssembly Interface Types). Each workflow node is a Wasm component with explicitly defined capabilities.
 
 ## Execution Model
 

@@ -2,7 +2,7 @@
 name = "fuschia-config"
 edition.workspace = true
 version.workspace = true
-description = "Workflow configuration types for Fuscia - serializable workflow definitions"
+description = "Workflow configuration types for Fuschia - serializable workflow definitions"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

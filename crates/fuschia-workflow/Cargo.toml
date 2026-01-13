@@ -2,7 +2,7 @@
 name = "fuschia-workflow"
 edition.workspace = true
 version.workspace = true
-description = "Locked/resolved workflow representation for Fuscia"
+description = "Locked/resolved workflow representation for Fuschia"
 
 [dependencies]
 fuschia-config = { path = "../fuschia-config" }
