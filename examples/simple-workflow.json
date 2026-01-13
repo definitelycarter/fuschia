@@ -1,0 +1,24 @@
+{
+  "workflow_id": "wf_simple_test",
+  "name": "Simple Test Workflow",
+  "nodes": [
+    {
+      "node_id": "trigger",
+      "type": "trigger",
+      "trigger_type": "manual"
+    },
+    {
+      "node_id": "process",
+      "type": "component",
+      "name": "test-task",
+      "version": "1.0.0",
+      "task_name": "execute",
+      "inputs": {
+        "message": "{{ message }}"
+      }
+    }
+  ],
+  "edges": [
+    ["trigger", "process"]
+  ]
+}

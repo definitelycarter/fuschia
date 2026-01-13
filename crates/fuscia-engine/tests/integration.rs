@@ -26,8 +26,8 @@ fn component_exists() -> bool {
 fn create_test_engine_config() -> (EngineConfig, tempfile::TempDir) {
   let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
 
-  // Create the component directory structure: <base>/test-task/1.0.0/component.wasm
-  let component_dir = temp_dir.path().join("test-task").join("1.0.0");
+  // Create the component directory structure: <base>/test-task--1.0.0/component.wasm
+  let component_dir = temp_dir.path().join("test-task--1.0.0");
   std::fs::create_dir_all(&component_dir).expect("failed to create component dir");
 
   // Symlink or copy the test component

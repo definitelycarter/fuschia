@@ -246,7 +246,7 @@ impl<N: ExecutionNotifier> WorkflowEngine<N> {
       .collect()
   }
 
-  /// Spawn tasks to execute all ready nodes.
+  /// Spawn tasks to execute all ready nodes in parallel.
   fn execute_ready_nodes(
     &self,
     workflow: &Workflow,
@@ -269,93 +269,75 @@ impl<N: ExecutionNotifier> WorkflowEngine<N> {
         .filter_map(|id| completed.get(id).map(|r| (id.clone(), r.data.clone())))
         .collect();
 
-      let handle = match &node.node_type {
-        NodeType::Trigger(_) => {
-          let node_id = node_id.clone();
-          tokio::spawn(async move {
-            Err(ExecutionError::InvalidGraph {
-              message: format!("trigger node '{}' should not be in ready queue", node_id),
-            })
-          })
-        }
-        NodeType::Component(locked) => {
-          let locked = locked.clone();
-          self.spawn_component_node(node, &locked, upstream_data, is_join, execution_id, cancel)?
-        }
-        NodeType::Join { .. } => Self::spawn_join_node(node_id.clone(), upstream_data),
-        NodeType::Loop(_) => {
-          let node_id = node_id.clone();
-          tokio::spawn(async move {
-            Err(ExecutionError::InvalidGraph {
-              message: format!("loop nodes not yet implemented: {}", node_id),
-            })
-          })
-        }
-      };
+      // Prepare execution context (load component if needed)
+      let exec_ctx = self.prepare_node_execution(&node, upstream_data, is_join, execution_id)?;
+      let cancel = cancel.clone();
 
-      handles.push(handle);
+      // Spawn the node execution
+      handles.push(tokio::spawn(async move {
+        run_node(node, exec_ctx, cancel).await
+      }));
     }
 
     Ok(handles)
   }
 
-  /// Spawn a task to execute a component node.
-  fn spawn_component_node(
+  /// Prepare everything needed to execute a node (without actually running it).
+  fn prepare_node_execution(
     &self,
-    node: Node,
-    locked: &LockedComponent,
+    node: &Node,
     upstream_data: HashMap<String, serde_json::Value>,
     is_join: bool,
     execution_id: &str,
-    cancel: &CancellationToken,
-  ) -> Result<tokio::task::JoinHandle<Result<NodeResult, ExecutionError>>, ExecutionError> {
-    // Compile component
+  ) -> Result<NodeExecutionContext, ExecutionError> {
+    let component = match &node.node_type {
+      NodeType::Component(locked) => Some(self.load_component(locked)?),
+      _ => None,
+    };
+
+    Ok(NodeExecutionContext {
+      component,
+      engine: self.engine.clone(),
+      upstream_data,
+      is_join,
+      execution_id: execution_id.to_string(),
+    })
+  }
+
+  /// Load and compile a component, using the cache if available.
+  ///
+  /// Components are stored in the format: `{name}--{version}/component.wasm`
+  /// where slashes in the name are replaced with `--`.
+  fn load_component(&self, locked: &LockedComponent) -> Result<Component, ExecutionError> {
     let key = ComponentKey::new(&locked.name, &locked.version);
+    let sanitized_name = locked.name.replace('/', "--");
+    let dir_name = format!("{}--{}", sanitized_name, locked.version);
     let wasm_path = self
       .config
       .component_base_path
-      .join(&locked.name)
-      .join(&locked.version)
+      .join(&dir_name)
       .join("component.wasm");
-    let component = self
+    self
       .component_cache
-      .get_or_compile(&self.engine, &key, &wasm_path)?;
-
-    let engine = self.engine.clone();
-    let input_schema = locked.input_schema.clone();
-    let execution_id = execution_id.to_string();
-    let cancel = cancel.clone();
-
-    Ok(tokio::spawn(async move {
-      execute_component(
-        node,
-        component,
-        engine,
-        upstream_data,
-        is_join,
-        input_schema,
-        execution_id,
-        cancel,
-      )
-      .await
-    }))
+      .get_or_compile(&self.engine, &key, &wasm_path)
   }
 
-  /// Spawn a task to execute a join node.
-  fn spawn_join_node(
-    node_id: String,
-    upstream_data: HashMap<String, serde_json::Value>,
-  ) -> tokio::task::JoinHandle<Result<NodeResult, ExecutionError>> {
-    tokio::spawn(async move {
-      let mut merged = serde_json::Map::new();
-      for (id, data) in upstream_data {
-        merged.insert(id, data);
-      }
-      Ok(NodeResult {
-        node_id,
-        data: serde_json::Value::Object(merged),
-      })
-    })
+  /// Execute a single node with the given input data.
+  ///
+  /// This bypasses graph traversal and executes the node directly.
+  /// The payload is treated as if it came from a single upstream "trigger" node.
+  pub async fn execute_node(
+    &self,
+    node: &Node,
+    payload: serde_json::Value,
+    cancel: CancellationToken,
+  ) -> Result<NodeResult, ExecutionError> {
+    let execution_id = uuid::Uuid::new_v4().to_string();
+    let mut upstream_data = HashMap::new();
+    upstream_data.insert("trigger".to_string(), payload);
+
+    let exec_ctx = self.prepare_node_execution(node, upstream_data, false, &execution_id)?;
+    run_node(node.clone(), exec_ctx, cancel).await
   }
 
   /// Get a reference to the wasmtime engine.
@@ -404,8 +386,63 @@ impl<N: ExecutionNotifier> WorkflowEngine<N> {
   }
 }
 
-/// Execute a component node (runs inside spawned task).
-async fn execute_component(
+/// Context needed to execute a node (prepared on the main thread, used in spawned task).
+struct NodeExecutionContext {
+  component: Option<Component>,
+  engine: Arc<Engine>,
+  upstream_data: HashMap<String, serde_json::Value>,
+  is_join: bool,
+  execution_id: String,
+}
+
+/// Execute a node with the given context.
+async fn run_node(
+  node: Node,
+  ctx: NodeExecutionContext,
+  cancel: CancellationToken,
+) -> Result<NodeResult, ExecutionError> {
+  match node.node_type {
+    NodeType::Trigger(_) => {
+      // Triggers shouldn't be in the ready queue during execution
+      Err(ExecutionError::InvalidGraph {
+        message: format!("trigger node '{}' should not be executed", node.node_id),
+      })
+    }
+    NodeType::Component(ref locked) => {
+      let input_schema = locked.input_schema.clone();
+      let component = ctx.component.ok_or_else(|| ExecutionError::InvalidGraph {
+        message: format!("component not loaded for node '{}'", node.node_id),
+      })?;
+      run_component(
+        node,
+        component,
+        ctx.engine,
+        ctx.upstream_data,
+        ctx.is_join,
+        input_schema,
+        ctx.execution_id,
+        cancel,
+      )
+      .await
+    }
+    NodeType::Join { .. } => {
+      let mut merged = serde_json::Map::new();
+      for (id, data) in ctx.upstream_data {
+        merged.insert(id, data);
+      }
+      Ok(NodeResult {
+        node_id: node.node_id,
+        data: serde_json::Value::Object(merged),
+      })
+    }
+    NodeType::Loop(_) => Err(ExecutionError::InvalidGraph {
+      message: format!("loop nodes not yet implemented: {}", node.node_id),
+    }),
+  }
+}
+
+/// Execute a component node.
+async fn run_component(
   node: Node,
   component: Component,
   engine: Arc<Engine>,

@@ -264,3 +264,4 @@ enum ExecutionError {
 | WorkflowExecution.config type | Should store original `WorkflowDef` or locked `Workflow` for audit trail? |
 | KV store value types | Should kv.wit support complex types (json, number, bool, object) or just strings? |
 | WorkflowRunner naming | Current name may be confusing - reconsider naming |
+| Distributed execution model | `fuscia start` daemon mode for production: init container pulls components at deploy time, pods wait for messages from broker. Each workflow node gets pre-warmed pods. Message format: `{execution_id, task_id, input}`. Orchestrator resolves templates, workers just execute. |
