@@ -1,4 +1,4 @@
-# Fuscia TODO
+# Fuschia TODO
 
 ## Crates - Completed
 
@@ -256,7 +256,7 @@ enum ExecutionError {
 
 | Task | Description | Priority |
 |------|-------------|----------|
-| Rename repo | Rename from `fuschia` to `fuschia` (fix spelling) | Low |
+| Rename repo | Rename repo directory from `fuscia` to `fuschia` | Low |
 
 ## Open Questions
 
