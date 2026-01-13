@@ -105,12 +105,19 @@ enum JoinNodeType {
 }
 
 enum JoinStrategy {
-    All, // Proceed only if all branches succeeded
-    Any, // Proceed if at least one branch succeeded
+    All,
+    Any,
 }
 ```
 
-Both strategies wait for all branches to complete before evaluating. Built-in strategies control **whether to proceed**. The join node must still produce a single output envelope for downstream nodes, either via the strategy's default behavior or custom Wasm logic.
+Both strategies wait for all branches to complete before evaluating:
+
+| Strategy | Proceeds If | Result Status |
+|----------|-------------|---------------|
+| `All` | All branches succeeded | `succeeded` if all pass, `failed` if any fail |
+| `Any` | At least one branch succeeded | `succeeded` if all pass, `completed_with_errors` if some fail, `failed` if all fail |
+
+Built-in strategies control **whether to proceed** and **what status to report**. The join node produces a single output envelope containing all branch results for downstream nodes, either via the strategy's default behavior or custom Wasm logic.
 
 ## Component Registry
 
