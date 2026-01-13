@@ -69,11 +69,13 @@
 mod cache;
 mod engine;
 mod error;
+mod events;
 mod input;
 mod runner;
 
 pub use cache::{ComponentCache, ComponentKey};
 pub use engine::{EngineConfig, ExecutionResult, NodeResult, WorkflowEngine};
 pub use error::ExecutionError;
+pub use events::{ChannelNotifier, ExecutionEvent, ExecutionNotifier, NoopNotifier};
 pub use input::{SchemaType, coerce_inputs, resolve_inputs};
 pub use runner::WorkflowRunner;

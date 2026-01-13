@@ -15,6 +15,7 @@ use wasmtime::component::Component;
 
 use crate::cache::{ComponentCache, ComponentKey};
 use crate::error::ExecutionError;
+use crate::events::{ExecutionEvent, ExecutionNotifier, NoopNotifier};
 use crate::input::{coerce_inputs, extract_schema_types, resolve_inputs};
 
 /// Result of a single node execution.
@@ -38,15 +39,29 @@ pub struct EngineConfig {
 }
 
 /// The workflow execution engine.
-pub struct WorkflowEngine {
+///
+/// Generic over `N: ExecutionNotifier` to allow different notification strategies.
+/// Use `WorkflowEngine::new()` for a default engine with no-op notifications,
+/// or `WorkflowEngine::with_notifier()` to provide a custom notifier.
+pub struct WorkflowEngine<N: ExecutionNotifier = NoopNotifier> {
   wasmtime_engine: Arc<Engine>,
   component_cache: ComponentCache,
   config: EngineConfig,
+  notifier: N,
 }
 
-impl WorkflowEngine {
-  /// Create a new workflow engine.
+impl WorkflowEngine<NoopNotifier> {
+  /// Create a new workflow engine with no-op notifications.
+  ///
+  /// Events are discarded. Use `with_notifier` if you need to observe events.
   pub fn new(config: EngineConfig) -> Result<Self, ExecutionError> {
+    Self::with_notifier(config, NoopNotifier)
+  }
+}
+
+impl<N: ExecutionNotifier> WorkflowEngine<N> {
+  /// Create a new workflow engine with a custom notifier.
+  pub fn with_notifier(config: EngineConfig, notifier: N) -> Result<Self, ExecutionError> {
     let mut wasmtime_config = wasmtime::Config::new();
     wasmtime_config.async_support(true);
     wasmtime_config.epoch_interruption(true);
@@ -60,6 +75,7 @@ impl WorkflowEngine {
       wasmtime_engine: Arc::new(wasmtime_engine),
       component_cache: ComponentCache::new(),
       config,
+      notifier,
     })
   }
 
@@ -75,41 +91,110 @@ impl WorkflowEngine {
     // Validate the workflow graph
     self.validate_workflow(workflow)?;
 
+    // Emit workflow started event
+    self.notifier.notify(ExecutionEvent::WorkflowStarted {
+      execution_id: execution_id.clone(),
+      workflow_id: workflow.workflow_id.clone(),
+    });
+
     // Initialize completed results with trigger node payloads
     let mut completed = self.initialize_triggers(workflow, payload)?;
 
     // Execute nodes until no more are ready
+    let result = self
+      .run_execution_loop(workflow, &mut completed, &execution_id, &cancel)
+      .await;
+
+    // Emit final event based on result
+    match &result {
+      Ok(_) => {
+        self.notifier.notify(ExecutionEvent::WorkflowCompleted {
+          execution_id: execution_id.clone(),
+        });
+      }
+      Err(e) => {
+        self.notifier.notify(ExecutionEvent::WorkflowFailed {
+          execution_id: execution_id.clone(),
+          error: e.to_string(),
+        });
+      }
+    }
+
+    result
+  }
+
+  /// Run the main execution loop.
+  async fn run_execution_loop(
+    &self,
+    workflow: &Workflow,
+    completed: &mut HashMap<String, NodeResult>,
+    execution_id: &str,
+    cancel: &CancellationToken,
+  ) -> Result<ExecutionResult, ExecutionError> {
     loop {
       if cancel.is_cancelled() {
         return Err(ExecutionError::Cancelled);
       }
 
-      let ready = self.find_ready_nodes(workflow, &completed);
+      let ready = self.find_ready_nodes(workflow, completed);
       if ready.is_empty() {
         break;
       }
 
-      let results =
-        self.execute_ready_nodes(workflow, &ready, &completed, &execution_id, &cancel)?;
+      // Emit node started events
+      for node_id in &ready {
+        self.notifier.notify(ExecutionEvent::NodeStarted {
+          execution_id: execution_id.to_string(),
+          node_id: node_id.clone(),
+        });
+      }
+
+      let handles = self.execute_ready_nodes(workflow, &ready, completed, execution_id, cancel)?;
 
       // Wait for all tasks
       let results = tokio::select! {
-          results = futures::future::join_all(results) => results,
+          results = futures::future::join_all(handles) => results,
           _ = cancel.cancelled() => return Err(ExecutionError::Cancelled),
       };
 
-      // Store results
+      // Process results and emit events
       for result in results {
-        let node_result = result.map_err(|e| ExecutionError::InvalidGraph {
+        let join_result = result.map_err(|e| ExecutionError::InvalidGraph {
           message: format!("task join error: {}", e),
-        })??;
-        completed.insert(node_result.node_id.clone(), node_result);
+        })?;
+
+        match join_result {
+          Ok(node_result) => {
+            self.notifier.notify(ExecutionEvent::NodeCompleted {
+              execution_id: execution_id.to_string(),
+              node_id: node_result.node_id.clone(),
+              data: node_result.data.clone(),
+            });
+            completed.insert(node_result.node_id.clone(), node_result);
+          }
+          Err(e) => {
+            // Extract node_id from error if available
+            let node_id = match &e {
+              ExecutionError::InputResolution { node_id, .. } => node_id.clone(),
+              ExecutionError::ComponentExecution { node_id, .. } => node_id.clone(),
+              ExecutionError::Timeout { node_id } => node_id.clone(),
+              ExecutionError::ComponentLoad { node_id, .. } => node_id.clone(),
+              _ => "unknown".to_string(),
+            };
+            self.notifier.notify(ExecutionEvent::NodeFailed {
+              execution_id: execution_id.to_string(),
+              node_id,
+              error: e.to_string(),
+            });
+            return Err(e);
+          }
+        }
       }
     }
 
     Ok(ExecutionResult {
-      execution_id,
-      node_results: completed,
+      execution_id: execution_id.to_string(),
+      node_results: completed.clone(),
     })
   }
 

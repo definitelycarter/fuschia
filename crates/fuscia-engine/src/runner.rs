@@ -12,6 +12,7 @@ use tracing::{error, info};
 
 use crate::engine::{ExecutionResult, WorkflowEngine};
 use crate::error::ExecutionError;
+use crate::events::{ExecutionNotifier, NoopNotifier};
 
 /// A runner that executes a workflow in response to trigger payloads.
 ///
@@ -27,28 +28,29 @@ use crate::error::ExecutionError;
 /// let cancel = CancellationToken::new();
 /// runner.start(cancel).await?;
 /// ```
-pub struct WorkflowRunner {
+pub struct WorkflowRunner<N: ExecutionNotifier = NoopNotifier> {
   sender: mpsc::Sender<serde_json::Value>,
   receiver: mpsc::Receiver<serde_json::Value>,
   workflow: Workflow,
-  engine: Arc<WorkflowEngine>,
+  engine: Arc<WorkflowEngine<N>>,
 }
 
-impl WorkflowRunner {
-  /// Create a new workflow runner.
+impl WorkflowRunner<NoopNotifier> {
+  /// Create a new workflow runner with no-op notifications.
   ///
   /// # Arguments
   /// * `workflow` - The workflow to execute
   /// * `engine` - The workflow engine for execution
-  /// * `buffer_size` - Size of the channel buffer (default: 100)
-  pub fn new(workflow: Workflow, engine: Arc<WorkflowEngine>) -> Self {
+  pub fn new(workflow: Workflow, engine: Arc<WorkflowEngine<NoopNotifier>>) -> Self {
     Self::with_buffer_size(workflow, engine, 100)
   }
+}
 
+impl<N: ExecutionNotifier> WorkflowRunner<N> {
   /// Create a new workflow runner with a custom buffer size.
   pub fn with_buffer_size(
     workflow: Workflow,
-    engine: Arc<WorkflowEngine>,
+    engine: Arc<WorkflowEngine<N>>,
     buffer_size: usize,
   ) -> Self {
     let (sender, receiver) = mpsc::channel(buffer_size);
@@ -168,7 +170,7 @@ impl WorkflowRunner {
   }
 
   /// Get a reference to the engine.
-  pub fn engine(&self) -> &WorkflowEngine {
+  pub fn engine(&self) -> &WorkflowEngine<N> {
     &self.engine
   }
 }
