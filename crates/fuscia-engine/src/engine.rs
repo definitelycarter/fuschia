@@ -44,7 +44,7 @@ pub struct EngineConfig {
 /// Use `WorkflowEngine::new()` for a default engine with no-op notifications,
 /// or `WorkflowEngine::with_notifier()` to provide a custom notifier.
 pub struct WorkflowEngine<N: ExecutionNotifier = NoopNotifier> {
-  wasmtime_engine: Arc<Engine>,
+  engine: Arc<Engine>,
   component_cache: ComponentCache,
   config: EngineConfig,
   notifier: N,
@@ -72,7 +72,7 @@ impl<N: ExecutionNotifier> WorkflowEngine<N> {
       })?;
 
     Ok(Self {
-      wasmtime_engine: Arc::new(wasmtime_engine),
+      engine: Arc::new(wasmtime_engine),
       component_cache: ComponentCache::new(),
       config,
       notifier,
@@ -319,9 +319,9 @@ impl<N: ExecutionNotifier> WorkflowEngine<N> {
       .join("component.wasm");
     let component = self
       .component_cache
-      .get_or_compile(&self.wasmtime_engine, &key, &wasm_path)?;
+      .get_or_compile(&self.engine, &key, &wasm_path)?;
 
-    let engine = self.wasmtime_engine.clone();
+    let engine = self.engine.clone();
     let input_schema = locked.input_schema.clone();
     let execution_id = execution_id.to_string();
     let cancel = cancel.clone();
@@ -359,8 +359,8 @@ impl<N: ExecutionNotifier> WorkflowEngine<N> {
   }
 
   /// Get a reference to the wasmtime engine.
-  pub fn wasmtime_engine(&self) -> &Engine {
-    &self.wasmtime_engine
+  pub fn engine(&self) -> &Engine {
+    &self.engine
   }
 
   /// Clear the component cache.
