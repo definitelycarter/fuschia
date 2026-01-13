@@ -104,6 +104,7 @@
 | Gap | Description | Priority |
 |-----|-------------|----------|
 | Required field validation | No validation that required input fields are present | Medium |
+| Digest verification | Verify component wasm SHA-256 against `LockedComponent.digest` at load time | High |
 
 ### fuscia-component
 
