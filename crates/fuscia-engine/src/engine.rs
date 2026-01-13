@@ -8,10 +8,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use fuscia_task_host::{Context, TaskHostState, execute_task};
-use fuscia_workflow::{NodeType, Workflow};
-use tokio::sync::Mutex;
+use fuscia_workflow::{LockedComponent, Node, NodeType, Workflow};
 use tokio_util::sync::CancellationToken;
 use wasmtime::Engine;
+use wasmtime::component::Component;
 
 use crate::cache::{ComponentCache, ComponentKey};
 use crate::error::ExecutionError;
@@ -64,9 +64,6 @@ impl WorkflowEngine {
   }
 
   /// Execute a workflow with the given trigger payload.
-  ///
-  /// The `trigger_node_id` specifies which trigger node initiated this execution.
-  /// The payload is assigned to that trigger node and flows downstream.
   pub async fn execute(
     &self,
     workflow: &Workflow,
@@ -74,17 +71,54 @@ impl WorkflowEngine {
     cancel: CancellationToken,
   ) -> Result<ExecutionResult, ExecutionError> {
     let execution_id = uuid::Uuid::new_v4().to_string();
-    let graph = workflow.graph();
 
     // Validate the workflow graph
     self.validate_workflow(workflow)?;
 
-    // Completed node results
-    let completed: Arc<Mutex<HashMap<String, NodeResult>>> = Arc::new(Mutex::new(HashMap::new()));
+    // Initialize completed results with trigger node payloads
+    let mut completed = self.initialize_triggers(workflow, payload)?;
 
-    // Find trigger nodes and store the payload for each
-    // For now, all triggers receive the same payload (in the future, we may
-    // want to specify which trigger initiated the execution)
+    // Execute nodes until no more are ready
+    loop {
+      if cancel.is_cancelled() {
+        return Err(ExecutionError::Cancelled);
+      }
+
+      let ready = self.find_ready_nodes(workflow, &completed);
+      if ready.is_empty() {
+        break;
+      }
+
+      let results =
+        self.execute_ready_nodes(workflow, &ready, &completed, &execution_id, &cancel)?;
+
+      // Wait for all tasks
+      let results = tokio::select! {
+          results = futures::future::join_all(results) => results,
+          _ = cancel.cancelled() => return Err(ExecutionError::Cancelled),
+      };
+
+      // Store results
+      for result in results {
+        let node_result = result.map_err(|e| ExecutionError::InvalidGraph {
+          message: format!("task join error: {}", e),
+        })??;
+        completed.insert(node_result.node_id.clone(), node_result);
+      }
+    }
+
+    Ok(ExecutionResult {
+      execution_id,
+      node_results: completed,
+    })
+  }
+
+  /// Initialize trigger nodes with the payload.
+  fn initialize_triggers(
+    &self,
+    workflow: &Workflow,
+    payload: serde_json::Value,
+  ) -> Result<HashMap<String, NodeResult>, ExecutionError> {
     let trigger_nodes = self.find_trigger_nodes(workflow);
     if trigger_nodes.is_empty() {
       return Err(ExecutionError::InvalidGraph {
@@ -92,224 +126,151 @@ impl WorkflowEngine {
       });
     }
 
-    // Store the trigger payload for each trigger node
-    {
-      let mut completed_guard = completed.lock().await;
-      for trigger_id in &trigger_nodes {
-        completed_guard.insert(
-          trigger_id.clone(),
-          NodeResult {
-            node_id: trigger_id.clone(),
-            data: payload.clone(),
-          },
-        );
-      }
+    let mut completed = HashMap::new();
+    for trigger_id in trigger_nodes {
+      completed.insert(
+        trigger_id.clone(),
+        NodeResult {
+          node_id: trigger_id,
+          data: payload.clone(),
+        },
+      );
     }
-
-    // Find initially ready nodes (downstream of entry)
-    let mut ready = self.find_ready_nodes(workflow, &completed).await;
-
-    while !ready.is_empty() {
-      // Check for cancellation before starting batch
-      if cancel.is_cancelled() {
-        return Err(ExecutionError::Cancelled);
-      }
-
-      // Execute ready nodes in parallel
-      let handles: Vec<_> = ready
-        .into_iter()
-        .map(|node_id| {
-          let engine = self.wasmtime_engine.clone();
-          let workflow = workflow.clone();
-          let completed = completed.clone();
-          let cancel = cancel.clone();
-          let execution_id = execution_id.clone();
-          let component_cache = &self.component_cache;
-          let config = &self.config;
-
-          // Get upstream data for this node
-          let upstream_ids: Vec<String> = graph.upstream(&node_id).iter().cloned().collect();
-          let is_join = graph.is_join_point(&node_id);
-
-          // Prepare the task
-          let node = workflow.get_node(&node_id).unwrap().clone();
-
-          // Get component info and compile
-          let (component_result, input_schema) = match &node.node_type {
-            NodeType::Trigger(_) => {
-              // Trigger nodes should already be completed with the payload
-              // This case shouldn't be reached in normal execution
-              return tokio::spawn(async move {
-                Err(ExecutionError::InvalidGraph {
-                  message: format!("trigger node '{}' should not be in ready queue", node_id),
-                })
-              });
-            }
-            NodeType::Component(locked) => {
-              let key = ComponentKey::new(&locked.name, &locked.version);
-              let wasm_path = config
-                .component_base_path
-                .join(&locked.name)
-                .join(&locked.version)
-                .join("component.wasm");
-              let result = component_cache.get_or_compile(&engine, &key, &wasm_path);
-              (result, locked.input_schema.clone())
-            }
-            NodeType::Join { .. } => {
-              // Join nodes don't execute components, they just merge data
-              return tokio::spawn(async move {
-                let completed_guard = completed.lock().await;
-                let mut merged = serde_json::Map::new();
-                for upstream_id in &upstream_ids {
-                  if let Some(result) = completed_guard.get(upstream_id) {
-                    merged.insert(upstream_id.clone(), result.data.clone());
-                  }
-                }
-                Ok(NodeResult {
-                  node_id,
-                  data: serde_json::Value::Object(merged),
-                })
-              });
-            }
-            NodeType::Loop(_) => {
-              // Loop nodes are deferred for now
-              return tokio::spawn(async move {
-                Err(ExecutionError::InvalidGraph {
-                  message: format!("loop nodes not yet implemented: {}", node_id),
-                })
-              });
-            }
-          };
-
-          let component = match component_result {
-            Ok(c) => c,
-            Err(e) => {
-              return tokio::spawn(async move { Err(e) });
-            }
-          };
-
-          tokio::spawn(async move {
-            // Check cancellation
-            if cancel.is_cancelled() {
-              return Err(ExecutionError::Cancelled);
-            }
-
-            // Gather upstream data
-            let upstream_data = {
-              let completed_guard = completed.lock().await;
-              upstream_ids
-                .iter()
-                .filter_map(|id| {
-                  completed_guard
-                    .get(id)
-                    .map(|r| (id.clone(), r.data.clone()))
-                })
-                .collect::<HashMap<_, _>>()
-            };
-
-            // Resolve inputs (template rendering)
-            let resolved_strings = resolve_inputs(&node_id, &node.inputs, &upstream_data, is_join)?;
-
-            // Coerce inputs to typed values based on component schema
-            let schema = extract_schema_types(&input_schema);
-            let resolved_inputs = coerce_inputs(&node_id, &resolved_strings, &schema)?;
-
-            // Create host state
-            let state = TaskHostState::new(execution_id.clone(), node_id.clone());
-
-            // Create context
-            let ctx = Context {
-              execution_id: execution_id.clone(),
-              node_id: node_id.clone(),
-              task_id: uuid::Uuid::new_v4().to_string(),
-            };
-
-            // Serialize input data
-            let input_data = serde_json::to_string(&resolved_inputs).map_err(|e| {
-              ExecutionError::InputResolution {
-                node_id: node_id.clone(),
-                message: format!("failed to serialize inputs: {}", e),
-              }
-            })?;
-
-            // Calculate epoch deadline based on timeout
-            let epoch_deadline = node.timeout_ms.map(|ms| ms / 10); // Rough conversion
-
-            // Execute the task
-            let result = execute_task(&engine, &component, state, ctx, input_data, epoch_deadline)
-              .await
-              .map_err(|e| ExecutionError::ComponentExecution {
-                node_id: node_id.clone(),
-                source: e,
-              })?;
-
-            // Parse output data
-            let output_data: serde_json::Value = serde_json::from_str(&result.output.data)
-              .map_err(|e| ExecutionError::ComponentExecution {
-                node_id: node_id.clone(),
-                source: fuscia_host::HostError::component_error(format!(
-                  "invalid output JSON: {}",
-                  e
-                )),
-              })?;
-
-            Ok(NodeResult {
-              node_id,
-              data: output_data,
-            })
-          })
-        })
-        .collect();
-
-      // Wait for all tasks, checking for cancellation
-      let results = tokio::select! {
-          results = futures::future::join_all(handles) => results,
-          _ = cancel.cancelled() => return Err(ExecutionError::Cancelled),
-      };
-
-      // Process results
-      for result in results {
-        let node_result = result.map_err(|e| ExecutionError::InvalidGraph {
-          message: format!("task join error: {}", e),
-        })??;
-
-        let mut completed_guard = completed.lock().await;
-        completed_guard.insert(node_result.node_id.clone(), node_result);
-      }
-
-      // Find newly ready nodes
-      ready = self.find_ready_nodes(workflow, &completed).await;
-    }
-
-    // Build final result
-    let completed_guard = completed.lock().await;
-    Ok(ExecutionResult {
-      execution_id,
-      node_results: completed_guard.clone(),
-    })
+    Ok(completed)
   }
 
   /// Find nodes that are ready to execute (all upstream nodes completed).
-  async fn find_ready_nodes(
+  fn find_ready_nodes(
     &self,
     workflow: &Workflow,
-    completed: &Arc<Mutex<HashMap<String, NodeResult>>>,
+    completed: &HashMap<String, NodeResult>,
   ) -> Vec<String> {
     let graph = workflow.graph();
-    let completed_guard = completed.lock().await;
 
     workflow
       .nodes
       .keys()
-      .filter(|id| !completed_guard.contains_key(*id))
+      .filter(|id| !completed.contains_key(*id))
       .filter(|id| {
         graph
           .upstream(id)
           .iter()
-          .all(|up| completed_guard.contains_key(up))
+          .all(|up| completed.contains_key(up))
       })
       .cloned()
       .collect()
+  }
+
+  /// Spawn tasks to execute all ready nodes.
+  fn execute_ready_nodes(
+    &self,
+    workflow: &Workflow,
+    ready: &[String],
+    completed: &HashMap<String, NodeResult>,
+    execution_id: &str,
+    cancel: &CancellationToken,
+  ) -> Result<Vec<tokio::task::JoinHandle<Result<NodeResult, ExecutionError>>>, ExecutionError> {
+    let graph = workflow.graph();
+    let mut handles = Vec::with_capacity(ready.len());
+
+    for node_id in ready {
+      let node = workflow.get_node(node_id).unwrap().clone();
+      let upstream_ids: Vec<String> = graph.upstream(node_id).iter().cloned().collect();
+      let is_join = graph.is_join_point(node_id);
+
+      // Gather upstream data
+      let upstream_data: HashMap<String, serde_json::Value> = upstream_ids
+        .iter()
+        .filter_map(|id| completed.get(id).map(|r| (id.clone(), r.data.clone())))
+        .collect();
+
+      let handle = match &node.node_type {
+        NodeType::Trigger(_) => {
+          let node_id = node_id.clone();
+          tokio::spawn(async move {
+            Err(ExecutionError::InvalidGraph {
+              message: format!("trigger node '{}' should not be in ready queue", node_id),
+            })
+          })
+        }
+        NodeType::Component(locked) => {
+          let locked = locked.clone();
+          self.spawn_component_node(node, &locked, upstream_data, is_join, execution_id, cancel)?
+        }
+        NodeType::Join { .. } => Self::spawn_join_node(node_id.clone(), upstream_data),
+        NodeType::Loop(_) => {
+          let node_id = node_id.clone();
+          tokio::spawn(async move {
+            Err(ExecutionError::InvalidGraph {
+              message: format!("loop nodes not yet implemented: {}", node_id),
+            })
+          })
+        }
+      };
+
+      handles.push(handle);
+    }
+
+    Ok(handles)
+  }
+
+  /// Spawn a task to execute a component node.
+  fn spawn_component_node(
+    &self,
+    node: Node,
+    locked: &LockedComponent,
+    upstream_data: HashMap<String, serde_json::Value>,
+    is_join: bool,
+    execution_id: &str,
+    cancel: &CancellationToken,
+  ) -> Result<tokio::task::JoinHandle<Result<NodeResult, ExecutionError>>, ExecutionError> {
+    // Compile component
+    let key = ComponentKey::new(&locked.name, &locked.version);
+    let wasm_path = self
+      .config
+      .component_base_path
+      .join(&locked.name)
+      .join(&locked.version)
+      .join("component.wasm");
+    let component = self
+      .component_cache
+      .get_or_compile(&self.wasmtime_engine, &key, &wasm_path)?;
+
+    let engine = self.wasmtime_engine.clone();
+    let input_schema = locked.input_schema.clone();
+    let execution_id = execution_id.to_string();
+    let cancel = cancel.clone();
+
+    Ok(tokio::spawn(async move {
+      execute_component(
+        node,
+        component,
+        engine,
+        upstream_data,
+        is_join,
+        input_schema,
+        execution_id,
+        cancel,
+      )
+      .await
+    }))
+  }
+
+  /// Spawn a task to execute a join node.
+  fn spawn_join_node(
+    node_id: String,
+    upstream_data: HashMap<String, serde_json::Value>,
+  ) -> tokio::task::JoinHandle<Result<NodeResult, ExecutionError>> {
+    tokio::spawn(async move {
+      let mut merged = serde_json::Map::new();
+      for (id, data) in upstream_data {
+        merged.insert(id, data);
+      }
+      Ok(NodeResult {
+        node_id,
+        data: serde_json::Value::Object(merged),
+      })
+    })
   }
 
   /// Get a reference to the wasmtime engine.
@@ -333,10 +294,6 @@ impl WorkflowEngine {
   }
 
   /// Validate the workflow graph.
-  ///
-  /// Checks:
-  /// - All entry points (nodes with no incoming edges) must be trigger nodes
-  /// - Non-trigger nodes with no incoming edges are orphans (error)
   fn validate_workflow(&self, workflow: &Workflow) -> Result<(), ExecutionError> {
     let graph = workflow.graph();
     let entry_points = graph.entry_points();
@@ -360,4 +317,67 @@ impl WorkflowEngine {
 
     Ok(())
   }
+}
+
+/// Execute a component node (runs inside spawned task).
+async fn execute_component(
+  node: Node,
+  component: Component,
+  engine: Arc<Engine>,
+  upstream_data: HashMap<String, serde_json::Value>,
+  is_join: bool,
+  input_schema: serde_json::Value,
+  execution_id: String,
+  cancel: CancellationToken,
+) -> Result<NodeResult, ExecutionError> {
+  let node_id = node.node_id.clone();
+
+  if cancel.is_cancelled() {
+    return Err(ExecutionError::Cancelled);
+  }
+
+  // Resolve inputs (template rendering)
+  let resolved_strings = resolve_inputs(&node_id, &node.inputs, &upstream_data, is_join)?;
+
+  // Coerce inputs to typed values based on component schema
+  let schema = extract_schema_types(&input_schema);
+  let resolved_inputs = coerce_inputs(&node_id, &resolved_strings, &schema)?;
+
+  // Create host state and context
+  let state = TaskHostState::new(execution_id.clone(), node_id.clone());
+  let ctx = Context {
+    execution_id: execution_id.clone(),
+    node_id: node_id.clone(),
+    task_id: uuid::Uuid::new_v4().to_string(),
+  };
+
+  // Serialize input data
+  let input_data =
+    serde_json::to_string(&resolved_inputs).map_err(|e| ExecutionError::InputResolution {
+      node_id: node_id.clone(),
+      message: format!("failed to serialize inputs: {}", e),
+    })?;
+
+  // Calculate epoch deadline based on timeout
+  let epoch_deadline = node.timeout_ms.map(|ms| ms / 10);
+
+  // Execute the task
+  let result = execute_task(&engine, &component, state, ctx, input_data, epoch_deadline)
+    .await
+    .map_err(|e| ExecutionError::ComponentExecution {
+      node_id: node_id.clone(),
+      source: e,
+    })?;
+
+  // Parse output data
+  let output_data: serde_json::Value =
+    serde_json::from_str(&result.output.data).map_err(|e| ExecutionError::ComponentExecution {
+      node_id: node_id.clone(),
+      source: fuscia_host::HostError::component_error(format!("invalid output JSON: {}", e)),
+    })?;
+
+  Ok(NodeResult {
+    node_id,
+    data: output_data,
+  })
 }
