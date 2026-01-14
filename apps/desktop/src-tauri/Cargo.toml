@@ -1,0 +1,30 @@
+[package]
+name = "fuschia-desktop"
+version = "0.1.0"
+description = "Fuschia Desktop - Visual workflow designer and runner"
+authors = ["you"]
+license = ""
+repository = ""
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "fuschia_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.5.3", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2.9.5", features = [] }
+tauri-plugin-log = "2"
+
+# Fuschia crates
+fuschia-config = { path = "../../../crates/fuschia-config" }
+fuschia-engine = { path = "../../../crates/fuschia-engine" }
+fuschia-resolver = { path = "../../../crates/fuschia-resolver" }
+fuschia-component-registry = { path = "../../../crates/fuschia-component-registry" }
+fuschia-store = { path = "../../../crates/fuschia-store" }

@@ -252,6 +252,12 @@ enum ExecutionError {
 }
 ```
 
+## Housekeeping
+
+| Item | Description | Priority |
+|------|-------------|----------|
+| Fix spelling | Rename "Fuschia" → "Fuchsia" across codebase (crate names, directories, references) | Low |
+
 ## Open Questions
 
 | Question | Context |

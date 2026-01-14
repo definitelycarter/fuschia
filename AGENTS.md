@@ -6,6 +6,7 @@ Fuschia is a workflow engine similar to n8n, built on WebAssembly components usi
 
 - [docs/DESIGN.md](./docs/DESIGN.md) - Architecture and design decisions
 - [docs/USE_CASES.md](./docs/USE_CASES.md) - Example workflows with diagrams and JSON definitions
+- [apps/desktop/DESIGN.md](./apps/desktop/DESIGN.md) - Desktop app design and theme
 - [TODO.md](./TODO.md) - Outstanding crates and features
 
 ## Project Structure
