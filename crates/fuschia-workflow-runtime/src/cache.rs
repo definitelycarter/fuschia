@@ -5,12 +5,12 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use wasmtime::Engine;
 use wasmtime::component::Component;
 
-use crate::error::ExecutionError;
+use crate::error::RuntimeError;
 
 /// Cache key for compiled components.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -29,14 +29,15 @@ impl ComponentKey {
 }
 
 /// Caches compiled wasm components to avoid recompilation.
+#[derive(Clone)]
 pub struct ComponentCache {
-  cache: RwLock<HashMap<ComponentKey, Component>>,
+  cache: Arc<RwLock<HashMap<ComponentKey, Component>>>,
 }
 
 impl ComponentCache {
   pub fn new() -> Self {
     Self {
-      cache: RwLock::new(HashMap::new()),
+      cache: Arc::new(RwLock::new(HashMap::new())),
     }
   }
 
@@ -46,7 +47,7 @@ impl ComponentCache {
     engine: &Engine,
     key: &ComponentKey,
     wasm_path: &Path,
-  ) -> Result<Component, ExecutionError> {
+  ) -> Result<Component, RuntimeError> {
     // Try read lock first
     {
       let cache = self.cache.read().unwrap();
@@ -57,9 +58,8 @@ impl ComponentCache {
 
     // Compile and insert with write lock
     let component =
-      Component::from_file(engine, wasm_path).map_err(|e| ExecutionError::ComponentLoad {
-        node_id: key.name.clone(),
-        message: e.to_string(),
+      Component::from_file(engine, wasm_path).map_err(|e| RuntimeError::InvalidGraph {
+        message: format!("failed to load component '{}': {}", key.name, e),
       })?;
 
     {

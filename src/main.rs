@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use fuschia_component_registry::FsComponentRegistry;
 use fuschia_config::WorkflowDef;
-use fuschia_engine::{ExecutorConfig, WorkflowExecutor};
+use fuschia_engine::{RuntimeConfig, WorkflowRuntime};
 use fuschia_resolver::{Resolver, StandardResolver};
 
 /// Fuschia - A workflow engine built on WebAssembly components
@@ -40,14 +40,13 @@ enum RunTarget {
     workflow_file: PathBuf,
   },
 
-  /// Run a single task from a workflow
-  Task {
+  /// Run a single node from a workflow
+  Node {
     /// Path to the workflow file (JSON or YAML)
     workflow_file: PathBuf,
 
     /// The node ID to execute
-    #[arg(long)]
-    node: String,
+    node_id: String,
   },
 }
 
@@ -65,11 +64,11 @@ fn main() -> Result<()> {
       RunTarget::Workflow { workflow_file } => {
         run_workflow(workflow_file, data_dir)?;
       }
-      RunTarget::Task {
+      RunTarget::Node {
         workflow_file,
-        node,
+        node_id,
       } => {
-        run_task(workflow_file, node, data_dir)?;
+        run_node(workflow_file, node_id, data_dir)?;
       }
     },
     None => {
@@ -113,16 +112,18 @@ async fn run_workflow_async(workflow_file: PathBuf, data_dir: PathBuf) -> Result
 
   eprintln!("Resolved workflow with {} nodes", workflow.nodes.len());
 
-  // Create executor
-  let config = ExecutorConfig {
+  // Create runtime
+  let config = RuntimeConfig {
     component_base_path: components_dir,
   };
-  let executor = WorkflowExecutor::new(config).context("failed to create workflow executor")?;
+  let runtime =
+    WorkflowRuntime::new(config, workflow).context("failed to create workflow runtime")?;
 
   // Execute workflow
   let cancel = CancellationToken::new();
-  let result = executor
-    .execute(&workflow, payload, cancel)
+  let result = runtime
+    .execute_workflow(payload, cancel)
+    .wait()
     .await
     .context("workflow execution failed")?;
 
@@ -141,12 +142,12 @@ async fn run_workflow_async(workflow_file: PathBuf, data_dir: PathBuf) -> Result
   Ok(())
 }
 
-fn run_task(workflow_file: PathBuf, node: String, data_dir: PathBuf) -> Result<()> {
+fn run_node(workflow_file: PathBuf, node_id: String, data_dir: PathBuf) -> Result<()> {
   let rt = tokio::runtime::Runtime::new()?;
-  rt.block_on(async { run_task_async(workflow_file, node, data_dir).await })
+  rt.block_on(async { run_node_async(workflow_file, node_id, data_dir).await })
 }
 
-async fn run_task_async(workflow_file: PathBuf, node_id: String, data_dir: PathBuf) -> Result<()> {
+async fn run_node_async(workflow_file: PathBuf, node_id: String, data_dir: PathBuf) -> Result<()> {
   // Read workflow definition
   let workflow_content = tokio::fs::read_to_string(&workflow_file)
     .await
@@ -179,19 +180,28 @@ async fn run_task_async(workflow_file: PathBuf, node_id: String, data_dir: PathB
     .await
     .context("failed to resolve workflow")?;
 
-  // Find the resolved node
-  let resolved_node = workflow
-    .nodes
-    .get(&node_id)
-    .with_context(|| format!("resolved node '{}' not found", node_id))?;
+  // Create runtime
+  let config = RuntimeConfig {
+    component_base_path: components_dir,
+  };
+  let runtime =
+    WorkflowRuntime::new(config, workflow).context("failed to create workflow runtime")?;
 
-  // TODO: Re-implement execute_node on WorkflowExecutor
-  // For now, we don't support running individual nodes
-  anyhow::bail!(
-    "Running individual nodes is not yet supported. Node '{}' of type {:?} cannot be executed directly.",
-    resolved_node.node_id,
-    resolved_node.node_type
-  );
+  // Execute single node
+  let cancel = CancellationToken::new();
+  let result = runtime
+    .execute_node(&node_id, payload, cancel)
+    .context("failed to create task execution")?
+    .wait()
+    .await
+    .context("task execution failed")?;
+
+  eprintln!("Task completed: {}", result.task_id);
+
+  // Print result as JSON
+  println!("{}", serde_json::to_string_pretty(&result.output)?);
+
+  Ok(())
 }
 
 fn read_payload_from_stdin() -> Result<serde_json::Value> {

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use fuschia_component_registry::TriggerType;
 use fuschia_config::JoinStrategy;
-use fuschia_engine::{ExecutionError, ExecutorConfig, WorkflowExecutor, WorkflowRunner};
+use fuschia_engine::{RuntimeConfig, RuntimeError, WorkflowRunner, WorkflowRuntime};
 use fuschia_workflow::{LockedComponent, LockedTrigger, Node, NodeType, Workflow};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
@@ -23,9 +23,9 @@ fn component_exists() -> bool {
   test_component_path().exists()
 }
 
-/// Create an executor config that points to a temp directory where we'll
+/// Create a runtime config that points to a temp directory where we'll
 /// symlink the test component.
-fn create_test_executor_config() -> (ExecutorConfig, tempfile::TempDir) {
+fn create_test_runtime_config() -> (RuntimeConfig, tempfile::TempDir) {
   let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
 
   // Create the component directory structure: <base>/test-task--1.0.0/component.wasm
@@ -42,11 +42,18 @@ fn create_test_executor_config() -> (ExecutorConfig, tempfile::TempDir) {
   #[cfg(windows)]
   std::fs::copy(&src, &dst).expect("failed to copy component");
 
-  let config = ExecutorConfig {
+  let config = RuntimeConfig {
     component_base_path: temp_dir.path().to_path_buf(),
   };
 
   (config, temp_dir)
+}
+
+/// Create a test runtime with the given workflow.
+fn create_test_runtime(workflow: Workflow) -> (Arc<WorkflowRuntime>, tempfile::TempDir) {
+  let (config, temp_dir) = create_test_runtime_config();
+  let runtime = Arc::new(WorkflowRuntime::new(config, workflow).expect("failed to create runtime"));
+  (runtime, temp_dir)
 }
 
 /// Create a test LockedComponent with default schema.
@@ -209,15 +216,15 @@ async fn test_simple_workflow_execution() {
     return;
   }
 
-  let (config, _temp_dir) = create_test_executor_config();
-  let engine = WorkflowExecutor::new(config).expect("failed to create engine");
-
   let workflow = create_simple_workflow();
+  let (runtime, _temp_dir) = create_test_runtime(workflow);
+
   let payload = json!({ "message": "hello world" });
   let cancel = CancellationToken::new();
 
-  let result = engine
-    .execute(&workflow, payload, cancel)
+  let result = runtime
+    .execute_workflow(payload, cancel)
+    .wait()
     .await
     .expect("workflow execution failed");
 
@@ -245,15 +252,15 @@ async fn test_parallel_workflow_execution() {
     return;
   }
 
-  let (config, _temp_dir) = create_test_executor_config();
-  let engine = WorkflowExecutor::new(config).expect("failed to create engine");
-
   let workflow = create_parallel_workflow();
+  let (runtime, _temp_dir) = create_test_runtime(workflow);
+
   let payload = json!({ "a": "value_a", "b": "value_b" });
   let cancel = CancellationToken::new();
 
-  let result = engine
-    .execute(&workflow, payload, cancel)
+  let result = runtime
+    .execute_workflow(payload, cancel)
+    .wait()
     .await
     .expect("workflow execution failed");
 
@@ -291,19 +298,18 @@ async fn test_workflow_cancellation() {
     return;
   }
 
-  let (config, _temp_dir) = create_test_executor_config();
-  let engine = WorkflowExecutor::new(config).expect("failed to create engine");
-
   let workflow = create_simple_workflow();
+  let (runtime, _temp_dir) = create_test_runtime(workflow);
+
   let payload = json!({ "message": "test" });
   let cancel = CancellationToken::new();
 
   // Cancel immediately
   cancel.cancel();
 
-  let result = engine.execute(&workflow, payload, cancel).await;
+  let result = runtime.execute_workflow(payload, cancel).wait().await;
 
-  assert!(matches!(result, Err(ExecutionError::Cancelled)));
+  assert!(matches!(result, Err(RuntimeError::Cancelled)));
 }
 
 #[tokio::test]
@@ -315,11 +321,10 @@ async fn test_workflow_runner() {
     return;
   }
 
-  let (config, _temp_dir) = create_test_executor_config();
-  let engine = Arc::new(WorkflowExecutor::new(config).expect("failed to create engine"));
-
   let workflow = create_simple_workflow();
-  let runner = WorkflowRunner::new(workflow, engine);
+  let (runtime, _temp_dir) = create_test_runtime(workflow);
+
+  let runner = WorkflowRunner::new(runtime);
 
   // Execute once directly
   let cancel = CancellationToken::new();
@@ -345,11 +350,10 @@ async fn test_workflow_runner_with_sender() {
     return;
   }
 
-  let (config, _temp_dir) = create_test_executor_config();
-  let engine = Arc::new(WorkflowExecutor::new(config).expect("failed to create engine"));
-
   let workflow = create_simple_workflow();
-  let runner = WorkflowRunner::new(workflow, engine);
+  let (runtime, _temp_dir) = create_test_runtime(workflow);
+
+  let runner = WorkflowRunner::new(runtime);
   let sender = runner.sender();
 
   let cancel = CancellationToken::new();
@@ -383,9 +387,6 @@ async fn test_input_template_resolution() {
     return;
   }
 
-  let (config, _temp_dir) = create_test_executor_config();
-  let engine = WorkflowExecutor::new(config).expect("failed to create engine");
-
   // Create a workflow where the task input uses a filter
   let mut nodes = HashMap::new();
 
@@ -415,11 +416,14 @@ async fn test_input_template_resolution() {
     max_retry_attempts: None,
   };
 
+  let (runtime, _temp_dir) = create_test_runtime(workflow);
+
   let payload = json!({ "name": "hello" });
   let cancel = CancellationToken::new();
 
-  let result = engine
-    .execute(&workflow, payload, cancel)
+  let result = runtime
+    .execute_workflow(payload, cancel)
+    .wait()
     .await
     .expect("execution failed");
 
@@ -433,9 +437,6 @@ async fn test_input_template_resolution() {
 
 #[tokio::test]
 async fn test_orphan_node_validation() {
-  let (config, _temp_dir) = create_test_executor_config();
-  let engine = WorkflowExecutor::new(config).expect("failed to create engine");
-
   // Create a workflow with an orphan node (no incoming edges, not a trigger)
   let mut nodes = HashMap::new();
 
@@ -477,13 +478,15 @@ async fn test_orphan_node_validation() {
     max_retry_attempts: None,
   };
 
+  let (runtime, _temp_dir) = create_test_runtime(workflow);
+
   let payload = json!({});
   let cancel = CancellationToken::new();
 
-  let result = engine.execute(&workflow, payload, cancel).await;
+  let result = runtime.execute_workflow(payload, cancel).wait().await;
 
-  assert!(matches!(result, Err(ExecutionError::InvalidGraph { .. })));
-  if let Err(ExecutionError::InvalidGraph { message }) = result {
+  assert!(matches!(result, Err(RuntimeError::InvalidGraph { .. })));
+  if let Err(RuntimeError::InvalidGraph { message }) = result {
     assert!(message.contains("orphan"));
   }
 }
@@ -496,9 +499,6 @@ async fn test_multiple_triggers() {
     );
     return;
   }
-
-  let (config, _temp_dir) = create_test_executor_config();
-  let engine = WorkflowExecutor::new(config).expect("failed to create engine");
 
   // Create a workflow with two triggers
   let mut nodes = HashMap::new();
@@ -555,11 +555,14 @@ async fn test_multiple_triggers() {
     max_retry_attempts: None,
   };
 
+  let (runtime, _temp_dir) = create_test_runtime(workflow);
+
   let payload = json!({ "source": "test" });
   let cancel = CancellationToken::new();
 
-  let result = engine
-    .execute(&workflow, payload, cancel)
+  let result = runtime
+    .execute_workflow(payload, cancel)
+    .wait()
     .await
     .expect("workflow execution failed");
 
@@ -579,9 +582,6 @@ async fn test_schema_type_coercion_success() {
     );
     return;
   }
-
-  let (config, _temp_dir) = create_test_executor_config();
-  let engine = WorkflowExecutor::new(config).expect("failed to create engine");
 
   // Create a workflow with typed inputs
   let mut nodes = HashMap::new();
@@ -614,12 +614,15 @@ async fn test_schema_type_coercion_success() {
     max_retry_attempts: None,
   };
 
+  let (runtime, _temp_dir) = create_test_runtime(workflow);
+
   // Pass values that will be coerced: "42" -> integer, "true" -> boolean
   let payload = json!({ "count": 42, "enabled": true, "name": "test" });
   let cancel = CancellationToken::new();
 
-  let result = engine
-    .execute(&workflow, payload, cancel)
+  let result = runtime
+    .execute_workflow(payload, cancel)
+    .wait()
     .await
     .expect("workflow execution failed");
 
@@ -641,9 +644,6 @@ async fn test_schema_type_coercion_failure() {
     );
     return;
   }
-
-  let (config, _temp_dir) = create_test_executor_config();
-  let engine = WorkflowExecutor::new(config).expect("failed to create engine");
 
   // Create a workflow with typed inputs
   let mut nodes = HashMap::new();
@@ -677,18 +677,17 @@ async fn test_schema_type_coercion_failure() {
     max_retry_attempts: None,
   };
 
+  let (runtime, _temp_dir) = create_test_runtime(workflow);
+
   // Pass an invalid value: "not_a_number" cannot be coerced to integer
   let payload = json!({ "count": "not_a_number" });
   let cancel = CancellationToken::new();
 
-  let result = engine.execute(&workflow, payload, cancel).await;
+  let result = runtime.execute_workflow(payload, cancel).wait().await;
 
   // Should fail with an InputResolution error
-  assert!(matches!(
-    result,
-    Err(ExecutionError::InputResolution { .. })
-  ));
-  if let Err(ExecutionError::InputResolution { node_id, message }) = result {
+  assert!(matches!(result, Err(RuntimeError::InputResolution { .. })));
+  if let Err(RuntimeError::InputResolution { node_id, message }) = result {
     assert_eq!(node_id, "process");
     assert!(message.contains("count") || message.contains("integer"));
   }

@@ -1,13 +1,14 @@
 [package]
-name = "fuschia-workflow-executor"
+name = "fuschia-workflow-runtime"
 edition.workspace = true
 version.workspace = true
-description = "Workflow execution for fuschia - graph traversal, scheduling, and orchestration"
+description = "Workflow runtime for fuschia - executes workflows and individual nodes"
 
 [dependencies]
 fuschia-workflow = { path = "../fuschia-workflow" }
 fuschia-config = { path = "../fuschia-config" }
-fuschia-task-executor = { path = "../fuschia-task-executor" }
+fuschia-task-host = { path = "../fuschia-task-host" }
+fuschia-host = { path = "../fuschia-host" }
 wasmtime = { version = "40", features = ["component-model", "async"] }
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"

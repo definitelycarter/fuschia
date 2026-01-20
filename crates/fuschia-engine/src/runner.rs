@@ -1,12 +1,11 @@
 //! Workflow runner with channel-based triggering.
 //!
 //! The `WorkflowRunner` owns an mpsc channel for receiving trigger payloads
-//! and executes workflows using the `WorkflowExecutor`.
+//! and executes workflows using the `WorkflowRuntime`.
 
 use std::sync::Arc;
 
-use fuschia_workflow::Workflow;
-use fuschia_workflow_executor::{ExecutionError, ExecutionResult, WorkflowExecutor};
+use fuschia_workflow_runtime::{RuntimeError, WorkflowResult, WorkflowRuntime};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
@@ -16,7 +15,7 @@ use tracing::{error, info};
 /// # Usage
 ///
 /// ```ignore
-/// let runner = WorkflowRunner::new(workflow, executor);
+/// let runner = WorkflowRunner::new(runtime);
 ///
 /// // Get sender for external triggers (webhooks, UI, etc.)
 /// let sender = runner.sender();
@@ -28,32 +27,25 @@ use tracing::{error, info};
 pub struct WorkflowRunner {
   sender: mpsc::Sender<serde_json::Value>,
   receiver: mpsc::Receiver<serde_json::Value>,
-  workflow: Workflow,
-  executor: Arc<WorkflowExecutor>,
+  runtime: Arc<WorkflowRuntime>,
 }
 
 impl WorkflowRunner {
   /// Create a new workflow runner.
   ///
   /// # Arguments
-  /// * `workflow` - The workflow to execute
-  /// * `executor` - The workflow executor for execution
-  pub fn new(workflow: Workflow, executor: Arc<WorkflowExecutor>) -> Self {
-    Self::with_buffer_size(workflow, executor, 100)
+  /// * `runtime` - The workflow runtime (owns the workflow)
+  pub fn new(runtime: Arc<WorkflowRuntime>) -> Self {
+    Self::with_buffer_size(runtime, 100)
   }
 
   /// Create a new workflow runner with a custom buffer size.
-  pub fn with_buffer_size(
-    workflow: Workflow,
-    executor: Arc<WorkflowExecutor>,
-    buffer_size: usize,
-  ) -> Self {
+  pub fn with_buffer_size(runtime: Arc<WorkflowRuntime>, buffer_size: usize) -> Self {
     let (sender, receiver) = mpsc::channel(buffer_size);
     Self {
       sender,
       receiver,
-      workflow,
-      executor,
+      runtime,
     }
   }
 
@@ -67,12 +59,12 @@ impl WorkflowRunner {
   /// Trigger a workflow execution with the given payload.
   ///
   /// This is a convenience method that sends through the channel.
-  pub async fn run(&self, payload: serde_json::Value) -> Result<(), ExecutionError> {
+  pub async fn run(&self, payload: serde_json::Value) -> Result<(), RuntimeError> {
     self
       .sender
       .send(payload)
       .await
-      .map_err(|_| ExecutionError::InvalidGraph {
+      .map_err(|_| RuntimeError::InvalidGraph {
         message: "workflow runner channel closed".to_string(),
       })
   }
@@ -81,10 +73,10 @@ impl WorkflowRunner {
   ///
   /// This blocks until the cancellation token is triggered or the channel closes.
   /// Each received payload triggers a workflow execution.
-  pub async fn start(mut self, cancel: CancellationToken) -> Result<(), ExecutionError> {
+  pub async fn start(mut self, cancel: CancellationToken) -> Result<(), RuntimeError> {
     info!(
-        workflow_id = %self.workflow.workflow_id,
-        workflow_name = %self.workflow.name,
+        workflow_id = %self.runtime.workflow().workflow_id,
+        workflow_name = %self.runtime.workflow().name,
         "starting workflow runner"
     );
 
@@ -92,7 +84,7 @@ impl WorkflowRunner {
       tokio::select! {
           _ = cancel.cancelled() => {
               info!(
-                  workflow_id = %self.workflow.workflow_id,
+                  workflow_id = %self.runtime.workflow().workflow_id,
                   "workflow runner cancelled"
               );
               break;
@@ -104,28 +96,29 @@ impl WorkflowRunner {
                       let exec_cancel = cancel.child_token();
 
                       info!(
-                          workflow_id = %self.workflow.workflow_id,
+                          workflow_id = %self.runtime.workflow().workflow_id,
                           "triggering workflow execution"
                       );
 
-                      match self.executor.execute(&self.workflow, payload, exec_cancel).await {
+                      let execution = self.runtime.execute_workflow(payload, exec_cancel);
+                      match execution.wait().await {
                           Ok(result) => {
                               info!(
-                                  workflow_id = %self.workflow.workflow_id,
+                                  workflow_id = %self.runtime.workflow().workflow_id,
                                   execution_id = %result.execution_id,
                                   tasks_executed = result.task_results.len(),
                                   "workflow execution completed"
                               );
                           }
-                          Err(ExecutionError::Cancelled) => {
+                          Err(RuntimeError::Cancelled) => {
                               info!(
-                                  workflow_id = %self.workflow.workflow_id,
+                                  workflow_id = %self.runtime.workflow().workflow_id,
                                   "workflow execution cancelled"
                               );
                           }
                           Err(e) => {
                               error!(
-                                  workflow_id = %self.workflow.workflow_id,
+                                  workflow_id = %self.runtime.workflow().workflow_id,
                                   error = %e,
                                   "workflow execution failed"
                               );
@@ -135,7 +128,7 @@ impl WorkflowRunner {
                   None => {
                       // Channel closed, exit loop
                       info!(
-                          workflow_id = %self.workflow.workflow_id,
+                          workflow_id = %self.runtime.workflow().workflow_id,
                           "workflow runner channel closed"
                       );
                       break;
@@ -155,34 +148,23 @@ impl WorkflowRunner {
     &self,
     payload: serde_json::Value,
     cancel: CancellationToken,
-  ) -> Result<ExecutionResult, ExecutionError> {
-    self.executor.execute(&self.workflow, payload, cancel).await
+  ) -> Result<WorkflowResult, RuntimeError> {
+    self.runtime.execute_workflow(payload, cancel).wait().await
   }
 
-  /// Get a reference to the workflow.
-  pub fn workflow(&self) -> &Workflow {
-    &self.workflow
-  }
-
-  /// Get a reference to the executor.
-  pub fn executor(&self) -> &WorkflowExecutor {
-    &self.executor
+  /// Get a reference to the runtime.
+  pub fn runtime(&self) -> &WorkflowRuntime {
+    &self.runtime
   }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-  use fuschia_workflow_executor::ExecutorConfig;
+  use fuschia_workflow::Workflow;
+  use fuschia_workflow_runtime::RuntimeConfig;
   use std::path::PathBuf;
   use std::time::Duration;
-
-  fn create_test_executor() -> Arc<WorkflowExecutor> {
-    let config = ExecutorConfig {
-      component_base_path: PathBuf::from("/tmp/components"),
-    };
-    Arc::new(WorkflowExecutor::new(config).unwrap())
-  }
 
   fn create_test_workflow() -> Workflow {
     Workflow {
@@ -195,20 +177,26 @@ mod tests {
     }
   }
 
+  fn create_test_runtime() -> Arc<WorkflowRuntime> {
+    let config = RuntimeConfig {
+      component_base_path: PathBuf::from("/tmp/components"),
+    };
+    let workflow = create_test_workflow();
+    Arc::new(WorkflowRuntime::new(config, workflow).unwrap())
+  }
+
   #[tokio::test]
   async fn test_runner_creation() {
-    let workflow = create_test_workflow();
-    let executor = create_test_executor();
-    let runner = WorkflowRunner::new(workflow, executor);
+    let runtime = create_test_runtime();
+    let runner = WorkflowRunner::new(runtime);
 
-    assert_eq!(runner.workflow().workflow_id, "test-workflow");
+    assert_eq!(runner.runtime().workflow().workflow_id, "test-workflow");
   }
 
   #[tokio::test]
   async fn test_sender_cloning() {
-    let workflow = create_test_workflow();
-    let executor = create_test_executor();
-    let runner = WorkflowRunner::new(workflow, executor);
+    let runtime = create_test_runtime();
+    let runner = WorkflowRunner::new(runtime);
 
     let sender1 = runner.sender();
     let sender2 = runner.sender();
@@ -220,9 +208,8 @@ mod tests {
 
   #[tokio::test]
   async fn test_run_sends_to_channel() {
-    let workflow = create_test_workflow();
-    let executor = create_test_executor();
-    let mut runner = WorkflowRunner::new(workflow, executor);
+    let runtime = create_test_runtime();
+    let mut runner = WorkflowRunner::new(runtime);
 
     // Send a payload
     runner
@@ -238,9 +225,8 @@ mod tests {
 
   #[tokio::test]
   async fn test_cancellation() {
-    let workflow = create_test_workflow();
-    let executor = create_test_executor();
-    let runner = WorkflowRunner::new(workflow, executor);
+    let runtime = create_test_runtime();
+    let runner = WorkflowRunner::new(runtime);
 
     let cancel = CancellationToken::new();
     let cancel_clone = cancel.clone();
