@@ -38,61 +38,23 @@ const initialNodes: Node[] = [
     type: "component",
     position: { x: 50, y: 120 },
     data: {
-      label: "Send Confirmation",
-      componentName: "email/send",
+      label: "Fetch User",
+      componentName: "http/fetch",
       status: "success",
-      critical: false,
     },
   },
-  // Right branch - payment processing chain (critical path)
   {
-    id: "process_payment",
+    id: "component-2",
     type: "component",
-    position: { x: 550, y: 120 },
+    position: { x: 400, y: 180 },
     data: {
-      label: "Process Payment",
-      componentName: "payment/process",
+      label: "Get Config",
+      componentName: "config/get",
       status: "success",
-      critical: true,
-      timeoutMs: 30000,
     },
   },
   {
-    id: "allocate_inventory",
-    type: "component",
-    position: { x: 550, y: 240 },
-    data: {
-      label: "Allocate Inventory",
-      componentName: "inventory/allocate",
-      status: "success",
-      critical: true,
-    },
-  },
-  {
-    id: "stage_for_shipping",
-    type: "component",
-    position: { x: 550, y: 360 },
-    data: {
-      label: "Stage for Shipping",
-      componentName: "shipping/stage",
-      status: "success",
-      critical: true,
-    },
-  },
-  {
-    id: "send_shipping_email",
-    type: "component",
-    position: { x: 550, y: 480 },
-    data: {
-      label: "Send Shipping Email",
-      componentName: "email/send",
-      status: "error",
-      critical: false,
-    },
-  },
-  // Join node - waits for all branches
-  {
-    id: "join",
+    id: "join-1",
     type: "join",
     position: { x: 300, y: 600 },
     data: { label: "Join", strategy: "all" },

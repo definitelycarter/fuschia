@@ -58,15 +58,6 @@ function ComponentNodeComponent({
     return null;
   };
 
-  // Format timeout for display
-  const formatTimeout = (ms: number) => {
-    if (ms >= 60000) return `${ms / 60000}m`;
-    if (ms >= 1000) return `${ms / 1000}s`;
-    return `${ms}ms`;
-  };
-
-  const hasAttributes = data.critical !== undefined || data.timeoutMs;
-
   return (
     <div
       className={`

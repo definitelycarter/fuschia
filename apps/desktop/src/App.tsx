@@ -102,14 +102,46 @@ function App() {
             </div>
           </Drawer>
         </div>
+      </header>
 
-        {/* Status bar */}
-        <footer className="flex items-center justify-between px-4 py-1.5 text-xs border-t border-[var(--color-border-default)] bg-[var(--color-bg-surface)] text-[var(--color-text-muted)]">
-          <span>Ready</span>
-          <span>v0.1.0</span>
-        </footer>
+      {/* Main content */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar */}
+        <aside className="w-56 border-r border-[var(--color-border-default)] bg-[var(--color-bg-surface)] p-4">
+          <nav className="space-y-1">
+            <a
+              href="#"
+              className="flex items-center gap-2 px-3 py-2 text-sm rounded-md bg-primary-500/10 text-primary-500"
+            >
+              Workflows
+            </a>
+            <a
+              href="#"
+              className="flex items-center gap-2 px-3 py-2 text-sm rounded-md text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-elevated)]"
+            >
+              Components
+            </a>
+            <a
+              href="#"
+              className="flex items-center gap-2 px-3 py-2 text-sm rounded-md text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-elevated)]"
+            >
+              Executions
+            </a>
+          </nav>
+        </aside>
+
+        {/* Canvas area */}
+        <main className="flex-1 bg-[var(--color-bg-base)]">
+          <WorkflowCanvas />
+        </main>
       </div>
-    </WorkflowContext.Provider>
+
+      {/* Status bar */}
+      <footer className="flex items-center justify-between px-4 py-1.5 text-xs border-t border-[var(--color-border-default)] bg-[var(--color-bg-surface)] text-[var(--color-text-muted)]">
+        <span>Ready</span>
+        <span>v0.1.0</span>
+      </footer>
+    </div>
   );
 }
 
