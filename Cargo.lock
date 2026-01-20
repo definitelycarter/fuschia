@@ -1586,20 +1586,13 @@ version = "0.0.1-alpha.0"
 dependencies = [
  "fuschia-component-registry",
  "fuschia-config",
- "fuschia-host",
- "fuschia-task-host",
  "fuschia-workflow",
- "futures",
- "minijinja",
- "serde",
+ "fuschia-workflow-executor",
  "serde_json",
  "tempfile",
- "thiserror 2.0.17",
  "tokio",
  "tokio-util",
  "tracing",
- "uuid",
- "wasmtime",
 ]
 
 [[package]]
@@ -1650,6 +1643,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuschia-task-executor"
+version = "0.0.1-alpha.0"
+dependencies = [
+ "fuschia-host",
+ "fuschia-task-host",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "wasmtime",
+]
+
+[[package]]
 name = "fuschia-task-host"
 version = "0.0.1-alpha.0"
 dependencies = [
@@ -1695,6 +1703,25 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "fuschia-workflow-executor"
+version = "0.0.1-alpha.0"
+dependencies = [
+ "fuschia-config",
+ "fuschia-task-executor",
+ "fuschia-workflow",
+ "futures",
+ "minijinja",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+ "wasmtime",
 ]
 
 [[package]]

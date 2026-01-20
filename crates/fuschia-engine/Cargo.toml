@@ -2,25 +2,18 @@
 name = "fuschia-engine"
 edition.workspace = true
 version.workspace = true
-description = "Workflow execution engine for fuschia"
+description = "Workflow execution engine for fuschia - provides WorkflowRunner and re-exports workflow-executor"
 
 [dependencies]
 fuschia-workflow = { path = "../fuschia-workflow" }
-fuschia-config = { path = "../fuschia-config" }
-fuschia-task-host = { path = "../fuschia-task-host" }
-fuschia-host = { path = "../fuschia-host" }
-fuschia-component-registry = { path = "../fuschia-component-registry" }
-wasmtime = { version = "40", features = ["component-model", "async"] }
+fuschia-workflow-executor = { path = "../fuschia-workflow-executor" }
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
-futures = "0.3"
-minijinja = "2"
-serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-thiserror = "2"
 tracing = "0.1"
-uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
+fuschia-component-registry = { path = "../fuschia-component-registry" }
+fuschia-config = { path = "../fuschia-config" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 tempfile = "3"

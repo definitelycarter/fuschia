@@ -32,6 +32,7 @@ pub struct WorkflowExecution {
   pub workflow_id: String,
   pub status: ExecutionStatus,
   pub config: Json<serde_json::Value>,
+  pub trigger_payload: Json<serde_json::Value>,
   pub started_at: DateTime<Utc>,
   pub completed_at: Option<DateTime<Utc>>,
 }
@@ -44,6 +45,8 @@ pub struct Task {
   pub node_id: String,
   pub status: TaskStatus,
   pub attempt: i32,
+  pub input: Option<Json<serde_json::Value>>,
+  pub resolved_input: Option<Json<serde_json::Value>>,
   pub started_at: DateTime<Utc>,
   pub completed_at: Option<DateTime<Utc>>,
   pub output: Option<Json<serde_json::Value>>,

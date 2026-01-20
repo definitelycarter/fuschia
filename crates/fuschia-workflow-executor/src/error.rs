@@ -1,6 +1,6 @@
 //! Error types for workflow execution.
 
-use fuschia_host::HostError;
+use fuschia_task_executor::TaskExecutionError;
 use thiserror::Error;
 
 /// Errors that can occur during workflow execution.
@@ -10,12 +10,12 @@ pub enum ExecutionError {
   #[error("input resolution failed for node '{node_id}': {message}")]
   InputResolution { node_id: String, message: String },
 
-  /// Component execution failed.
-  #[error("component execution failed for node '{node_id}': {source}")]
-  ComponentExecution {
+  /// Task execution failed.
+  #[error("task execution failed for node '{node_id}': {source}")]
+  TaskExecution {
     node_id: String,
     #[source]
-    source: HostError,
+    source: TaskExecutionError,
   },
 
   /// Workflow execution was cancelled.

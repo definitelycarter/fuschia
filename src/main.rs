@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use fuschia_component_registry::FsComponentRegistry;
 use fuschia_config::WorkflowDef;
-use fuschia_engine::{EngineConfig, WorkflowEngine};
+use fuschia_engine::{ExecutorConfig, WorkflowExecutor};
 use fuschia_resolver::{Resolver, StandardResolver};
 
 /// Fuschia - A workflow engine built on WebAssembly components
@@ -113,27 +113,27 @@ async fn run_workflow_async(workflow_file: PathBuf, data_dir: PathBuf) -> Result
 
   eprintln!("Resolved workflow with {} nodes", workflow.nodes.len());
 
-  // Create engine
-  let config = EngineConfig {
+  // Create executor
+  let config = ExecutorConfig {
     component_base_path: components_dir,
   };
-  let engine = WorkflowEngine::new(config).context("failed to create workflow engine")?;
+  let executor = WorkflowExecutor::new(config).context("failed to create workflow executor")?;
 
   // Execute workflow
   let cancel = CancellationToken::new();
-  let result = engine
+  let result = executor
     .execute(&workflow, payload, cancel)
     .await
     .context("workflow execution failed")?;
 
   eprintln!("Execution completed: {}", result.execution_id);
-  eprintln!("Nodes executed: {}", result.node_results.len());
+  eprintln!("Tasks executed: {}", result.task_results.len());
 
   // Print results as JSON
   let output: serde_json::Map<String, serde_json::Value> = result
-    .node_results
+    .task_results
     .into_iter()
-    .map(|(id, r)| (id, r.data))
+    .map(|(id, r)| (id, r.output))
     .collect();
 
   println!("{}", serde_json::to_string_pretty(&output)?);
@@ -185,25 +185,13 @@ async fn run_task_async(workflow_file: PathBuf, node_id: String, data_dir: PathB
     .get(&node_id)
     .with_context(|| format!("resolved node '{}' not found", node_id))?;
 
-  // Create engine
-  let config = EngineConfig {
-    component_base_path: components_dir,
-  };
-  let engine = WorkflowEngine::new(config).context("failed to create workflow engine")?;
-
-  // Execute just this node
-  let cancel = CancellationToken::new();
-  let result = engine
-    .execute_node(resolved_node, payload, cancel)
-    .await
-    .context("node execution failed")?;
-
-  eprintln!("Node execution completed");
-
-  // Print result as JSON
-  println!("{}", serde_json::to_string_pretty(&result.data)?);
-
-  Ok(())
+  // TODO: Re-implement execute_node on WorkflowExecutor
+  // For now, we don't support running individual nodes
+  anyhow::bail!(
+    "Running individual nodes is not yet supported. Node '{}' of type {:?} cannot be executed directly.",
+    resolved_node.node_id,
+    resolved_node.node_type
+  );
 }
 
 fn read_payload_from_stdin() -> Result<serde_json::Value> {

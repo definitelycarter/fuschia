@@ -1,7 +1,8 @@
 //! Fuschia Workflow Engine
 //!
 //! This crate provides the workflow execution engine for fuschia.
-//! It handles graph traversal, input resolution, and component execution.
+//! It re-exports types from `fuschia-workflow-executor` and provides
+//! a `WorkflowRunner` for channel-based workflow triggering.
 //!
 //! # Architecture
 //!
@@ -15,34 +16,33 @@
 //!                               │
 //!                               ▼
 //! ┌─────────────────────────────────────────────────────────────┐
-//! │                      WorkflowEngine                         │
-//! │  - execute(workflow, payload) → ExecutionResult             │
+//! │                    WorkflowExecutor                         │
+//! │  - execute(workflow, payload, cancel) → ExecutionResult     │
 //! │  - graph traversal, scheduling                              │
 //! │  - input resolution via minijinja                           │
 //! └─────────────────────────────────────────────────────────────┘
 //!                               │
 //!                               ▼
 //! ┌─────────────────────────────────────────────────────────────┐
-//! │                    fuschia-task-host                         │
-//! │  - execute_task(engine, component, state, ctx, data)        │
-//! │  - handles wasm instantiation + execution                   │
+//! │                      TaskExecutor                           │
+//! │  - executes individual tasks via wasm runtime               │
 //! └─────────────────────────────────────────────────────────────┘
 //! ```
 //!
 //! # Usage
 //!
 //! ```ignore
-//! use fuschia_engine::{WorkflowEngine, WorkflowRunner, EngineConfig};
+//! use fuschia_engine::{WorkflowExecutor, WorkflowRunner, ExecutorConfig};
 //! use tokio_util::sync::CancellationToken;
 //!
-//! // Create the engine
-//! let config = EngineConfig {
+//! // Create the executor
+//! let config = ExecutorConfig {
 //!     component_base_path: PathBuf::from("/path/to/components"),
 //! };
-//! let engine = Arc::new(WorkflowEngine::new(config)?);
+//! let executor = Arc::new(WorkflowExecutor::new(config)?);
 //!
 //! // Create a runner for a workflow
-//! let runner = WorkflowRunner::new(workflow, engine);
+//! let runner = WorkflowRunner::new(workflow, executor);
 //!
 //! // Get sender for external triggers
 //! let sender = runner.sender();
@@ -51,31 +51,12 @@
 //! let cancel = CancellationToken::new();
 //! runner.start(cancel).await?;
 //! ```
-//!
-//! # Input Resolution
-//!
-//! Node inputs are resolved using minijinja templates:
-//!
-//! **Single upstream node:**
-//! ```json
-//! { "recipient": "{{ email }}", "greeting": "Hello {{ name | title }}!" }
-//! ```
-//!
-//! **Join node (multiple upstream):**
-//! ```json
-//! { "user_email": "{{ fetch_user.email }}", "config": "{{ get_config.setting }}" }
-//! ```
 
-mod cache;
-mod engine;
-mod error;
-mod events;
-mod input;
 mod runner;
 
-pub use cache::{ComponentCache, ComponentKey};
-pub use engine::{EngineConfig, ExecutionResult, NodeResult, WorkflowEngine};
-pub use error::ExecutionError;
-pub use events::{ChannelNotifier, ExecutionEvent, ExecutionNotifier, NoopNotifier};
-pub use input::{SchemaType, coerce_inputs, resolve_inputs};
+// Re-export from fuschia-workflow-executor
+pub use fuschia_workflow_executor::{
+  ExecutionError, ExecutionResult, ExecutorConfig, TaskResult, WorkflowExecutor,
+};
+
 pub use runner::WorkflowRunner;

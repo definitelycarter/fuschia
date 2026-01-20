@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
 
-use crate::{Error, ExecutionStatus, Store, Task, WorkflowExecution};
+use crate::{Error, ExecutionStatus, Store, Task, TaskStatus, WorkflowExecution};
 
 /// SQLite-based store implementation.
 pub struct SqliteStore {
@@ -32,19 +32,20 @@ fn map_row_not_found(e: sqlx::Error, entity: &str) -> Error {
 impl Store for SqliteStore {
   async fn create_execution(&self, execution: &WorkflowExecution) -> Result<(), Error> {
     sqlx::query(
-            r#"
-            INSERT INTO workflow_executions (execution_id, workflow_id, status, config, started_at, completed_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            "#,
-        )
-        .bind(&execution.execution_id)
-        .bind(&execution.workflow_id)
-        .bind(&execution.status)
-        .bind(&execution.config)
-        .bind(&execution.started_at)
-        .bind(&execution.completed_at)
-        .execute(&self.pool)
-        .await?;
+      r#"
+      INSERT INTO workflow_executions (execution_id, workflow_id, status, config, trigger_payload, started_at, completed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      "#,
+    )
+    .bind(&execution.execution_id)
+    .bind(&execution.workflow_id)
+    .bind(&execution.status)
+    .bind(&execution.config)
+    .bind(&execution.trigger_payload)
+    .bind(&execution.started_at)
+    .bind(&execution.completed_at)
+    .execute(&self.pool)
+    .await?;
 
     Ok(())
   }
@@ -52,10 +53,10 @@ impl Store for SqliteStore {
   async fn get_execution(&self, execution_id: &str) -> Result<WorkflowExecution, Error> {
     sqlx::query_as(
       r#"
-            SELECT execution_id, workflow_id, status, config, started_at, completed_at
-            FROM workflow_executions
-            WHERE execution_id = ?
-            "#,
+      SELECT execution_id, workflow_id, status, config, trigger_payload, started_at, completed_at
+      FROM workflow_executions
+      WHERE execution_id = ?
+      "#,
     )
     .bind(execution_id)
     .fetch_one(&self.pool)
@@ -71,10 +72,10 @@ impl Store for SqliteStore {
   ) -> Result<(), Error> {
     sqlx::query(
       r#"
-            UPDATE workflow_executions
-            SET status = ?, completed_at = ?
-            WHERE execution_id = ?
-            "#,
+      UPDATE workflow_executions
+      SET status = ?, completed_at = ?
+      WHERE execution_id = ?
+      "#,
     )
     .bind(status)
     .bind(completed_at)
@@ -88,11 +89,11 @@ impl Store for SqliteStore {
   async fn list_executions(&self, workflow_id: &str) -> Result<Vec<WorkflowExecution>, Error> {
     sqlx::query_as(
       r#"
-            SELECT execution_id, workflow_id, status, config, started_at, completed_at
-            FROM workflow_executions
-            WHERE workflow_id = ?
-            ORDER BY started_at DESC
-            "#,
+      SELECT execution_id, workflow_id, status, config, trigger_payload, started_at, completed_at
+      FROM workflow_executions
+      WHERE workflow_id = ?
+      ORDER BY started_at DESC
+      "#,
     )
     .bind(workflow_id)
     .fetch_all(&self.pool)
@@ -102,50 +103,54 @@ impl Store for SqliteStore {
 
   async fn create_task(&self, task: &Task) -> Result<(), Error> {
     sqlx::query(
-            r#"
-            INSERT INTO workflow_tasks (task_id, execution_id, node_id, status, attempt, started_at, completed_at, output, error)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#,
-        )
-        .bind(&task.task_id)
-        .bind(&task.execution_id)
-        .bind(&task.node_id)
-        .bind(&task.status)
-        .bind(task.attempt)
-        .bind(&task.started_at)
-        .bind(&task.completed_at)
-        .bind(&task.output)
-        .bind(&task.error)
-        .execute(&self.pool)
-        .await?;
+      r#"
+      INSERT INTO workflow_tasks (task_id, execution_id, node_id, status, attempt, input, resolved_input, started_at, completed_at, output, error)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      "#,
+    )
+    .bind(&task.task_id)
+    .bind(&task.execution_id)
+    .bind(&task.node_id)
+    .bind(&task.status)
+    .bind(task.attempt)
+    .bind(&task.input)
+    .bind(&task.resolved_input)
+    .bind(&task.started_at)
+    .bind(&task.completed_at)
+    .bind(&task.output)
+    .bind(&task.error)
+    .execute(&self.pool)
+    .await?;
 
     Ok(())
   }
 
   async fn get_task(&self, task_id: &str) -> Result<Task, Error> {
     sqlx::query_as(
-            r#"
-            SELECT task_id, execution_id, node_id, status, attempt, started_at, completed_at, output, error
-            FROM workflow_tasks
-            WHERE task_id = ?
-            "#,
-        )
-        .bind(task_id)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| map_row_not_found(e, task_id))
+      r#"
+      SELECT task_id, execution_id, node_id, status, attempt, input, resolved_input, started_at, completed_at, output, error
+      FROM workflow_tasks
+      WHERE task_id = ?
+      "#,
+    )
+    .bind(task_id)
+    .fetch_one(&self.pool)
+    .await
+    .map_err(|e| map_row_not_found(e, task_id))
   }
 
   async fn update_task(&self, task: &Task) -> Result<(), Error> {
     sqlx::query(
       r#"
-            UPDATE workflow_tasks
-            SET status = ?, attempt = ?, completed_at = ?, output = ?, error = ?
-            WHERE task_id = ?
-            "#,
+      UPDATE workflow_tasks
+      SET status = ?, attempt = ?, input = ?, resolved_input = ?, completed_at = ?, output = ?, error = ?
+      WHERE task_id = ?
+      "#,
     )
     .bind(&task.status)
     .bind(task.attempt)
+    .bind(&task.input)
+    .bind(&task.resolved_input)
     .bind(&task.completed_at)
     .bind(&task.output)
     .bind(&task.error)
@@ -158,16 +163,42 @@ impl Store for SqliteStore {
 
   async fn list_tasks(&self, execution_id: &str) -> Result<Vec<Task>, Error> {
     sqlx::query_as(
-            r#"
-            SELECT task_id, execution_id, node_id, status, attempt, started_at, completed_at, output, error
-            FROM workflow_tasks
-            WHERE execution_id = ?
-            ORDER BY started_at ASC
-            "#,
-        )
-        .bind(execution_id)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(Error::Database)
+      r#"
+      SELECT task_id, execution_id, node_id, status, attempt, input, resolved_input, started_at, completed_at, output, error
+      FROM workflow_tasks
+      WHERE execution_id = ?
+      ORDER BY started_at ASC
+      "#,
+    )
+    .bind(execution_id)
+    .fetch_all(&self.pool)
+    .await
+    .map_err(Error::Database)
+  }
+
+  async fn update_task_status(
+    &self,
+    task_id: &str,
+    status: TaskStatus,
+    completed_at: Option<DateTime<Utc>>,
+    output: Option<serde_json::Value>,
+    error: Option<String>,
+  ) -> Result<(), Error> {
+    sqlx::query(
+      r#"
+      UPDATE workflow_tasks
+      SET status = ?, completed_at = ?, output = ?, error = ?
+      WHERE task_id = ?
+      "#,
+    )
+    .bind(status)
+    .bind(completed_at)
+    .bind(output.map(sqlx::types::Json))
+    .bind(error)
+    .bind(task_id)
+    .execute(&self.pool)
+    .await?;
+
+    Ok(())
   }
 }

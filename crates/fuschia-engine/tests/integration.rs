@@ -4,7 +4,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use fuschia_engine::{EngineConfig, ExecutionError, WorkflowEngine, WorkflowRunner};
+use fuschia_component_registry::TriggerType;
+use fuschia_config::JoinStrategy;
+use fuschia_engine::{ExecutionError, ExecutorConfig, WorkflowExecutor, WorkflowRunner};
 use fuschia_workflow::{LockedComponent, LockedTrigger, Node, NodeType, Workflow};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
@@ -21,9 +23,9 @@ fn component_exists() -> bool {
   test_component_path().exists()
 }
 
-/// Create an engine config that points to a temp directory where we'll
+/// Create an executor config that points to a temp directory where we'll
 /// symlink the test component.
-fn create_test_engine_config() -> (EngineConfig, tempfile::TempDir) {
+fn create_test_executor_config() -> (ExecutorConfig, tempfile::TempDir) {
   let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
 
   // Create the component directory structure: <base>/test-task--1.0.0/component.wasm
@@ -40,7 +42,7 @@ fn create_test_engine_config() -> (EngineConfig, tempfile::TempDir) {
   #[cfg(windows)]
   std::fs::copy(&src, &dst).expect("failed to copy component");
 
-  let config = EngineConfig {
+  let config = ExecutorConfig {
     component_base_path: temp_dir.path().to_path_buf(),
   };
 
@@ -86,7 +88,7 @@ fn create_manual_trigger(node_id: &str) -> Node {
   Node {
     node_id: node_id.to_string(),
     node_type: NodeType::Trigger(LockedTrigger {
-      trigger_type: fuschia_component_registry::TriggerType::Manual,
+      trigger_type: TriggerType::Manual,
       component: None,
     }),
     inputs: HashMap::new(),
@@ -174,7 +176,7 @@ fn create_parallel_workflow() -> Workflow {
     Node {
       node_id: "join".to_string(),
       node_type: NodeType::Join {
-        strategy: fuschia_config::JoinStrategy::All,
+        strategy: JoinStrategy::All,
       },
       inputs: HashMap::new(),
       timeout_ms: None,
@@ -207,8 +209,8 @@ async fn test_simple_workflow_execution() {
     return;
   }
 
-  let (config, _temp_dir) = create_test_engine_config();
-  let engine = WorkflowEngine::new(config).expect("failed to create engine");
+  let (config, _temp_dir) = create_test_executor_config();
+  let engine = WorkflowExecutor::new(config).expect("failed to create engine");
 
   let workflow = create_simple_workflow();
   let payload = json!({ "message": "hello world" });
@@ -220,14 +222,14 @@ async fn test_simple_workflow_execution() {
     .expect("workflow execution failed");
 
   // Should have executed trigger and process nodes
-  assert_eq!(result.node_results.len(), 2);
-  assert!(result.node_results.contains_key("trigger"));
-  assert!(result.node_results.contains_key("process"));
+  assert_eq!(result.task_results.len(), 2);
+  assert!(result.task_results.contains_key("trigger"));
+  assert!(result.task_results.contains_key("process"));
 
   // Check the process node output
-  let process_result = &result.node_results["process"];
+  let process_result = &result.task_results["process"];
   let output: serde_json::Value =
-    serde_json::from_value(process_result.data.clone()).expect("invalid output");
+    serde_json::from_value(process_result.output.clone()).expect("invalid output");
 
   // The test component wraps the input in { "input": {...} }
   assert_eq!(output["input"]["message"], "hello world");
@@ -243,8 +245,8 @@ async fn test_parallel_workflow_execution() {
     return;
   }
 
-  let (config, _temp_dir) = create_test_engine_config();
-  let engine = WorkflowEngine::new(config).expect("failed to create engine");
+  let (config, _temp_dir) = create_test_executor_config();
+  let engine = WorkflowExecutor::new(config).expect("failed to create engine");
 
   let workflow = create_parallel_workflow();
   let payload = json!({ "a": "value_a", "b": "value_b" });
@@ -256,28 +258,28 @@ async fn test_parallel_workflow_execution() {
     .expect("workflow execution failed");
 
   // Should have executed all 4 nodes
-  assert_eq!(result.node_results.len(), 4);
-  assert!(result.node_results.contains_key("trigger"));
-  assert!(result.node_results.contains_key("branch_a"));
-  assert!(result.node_results.contains_key("branch_b"));
-  assert!(result.node_results.contains_key("join"));
+  assert_eq!(result.task_results.len(), 4);
+  assert!(result.task_results.contains_key("trigger"));
+  assert!(result.task_results.contains_key("branch_a"));
+  assert!(result.task_results.contains_key("branch_b"));
+  assert!(result.task_results.contains_key("join"));
 
   // Check branch_a output
-  let branch_a = &result.node_results["branch_a"];
+  let branch_a = &result.task_results["branch_a"];
   let output_a: serde_json::Value =
-    serde_json::from_value(branch_a.data.clone()).expect("invalid output");
+    serde_json::from_value(branch_a.output.clone()).expect("invalid output");
   assert_eq!(output_a["input"]["message"], "value_a");
 
   // Check branch_b output
-  let branch_b = &result.node_results["branch_b"];
+  let branch_b = &result.task_results["branch_b"];
   let output_b: serde_json::Value =
-    serde_json::from_value(branch_b.data.clone()).expect("invalid output");
+    serde_json::from_value(branch_b.output.clone()).expect("invalid output");
   assert_eq!(output_b["input"]["message"], "value_b");
 
   // Check join node merged both branches
-  let join_result = &result.node_results["join"];
-  assert!(join_result.data.get("branch_a").is_some());
-  assert!(join_result.data.get("branch_b").is_some());
+  let join_result = &result.task_results["join"];
+  assert!(join_result.output.get("branch_a").is_some());
+  assert!(join_result.output.get("branch_b").is_some());
 }
 
 #[tokio::test]
@@ -289,8 +291,8 @@ async fn test_workflow_cancellation() {
     return;
   }
 
-  let (config, _temp_dir) = create_test_engine_config();
-  let engine = WorkflowEngine::new(config).expect("failed to create engine");
+  let (config, _temp_dir) = create_test_executor_config();
+  let engine = WorkflowExecutor::new(config).expect("failed to create engine");
 
   let workflow = create_simple_workflow();
   let payload = json!({ "message": "test" });
@@ -313,8 +315,8 @@ async fn test_workflow_runner() {
     return;
   }
 
-  let (config, _temp_dir) = create_test_engine_config();
-  let engine = Arc::new(WorkflowEngine::new(config).expect("failed to create engine"));
+  let (config, _temp_dir) = create_test_executor_config();
+  let engine = Arc::new(WorkflowExecutor::new(config).expect("failed to create engine"));
 
   let workflow = create_simple_workflow();
   let runner = WorkflowRunner::new(workflow, engine);
@@ -326,11 +328,11 @@ async fn test_workflow_runner() {
     .await
     .expect("execution failed");
 
-  assert_eq!(result.node_results.len(), 2);
+  assert_eq!(result.task_results.len(), 2);
 
-  let process_result = &result.node_results["process"];
+  let process_result = &result.task_results["process"];
   let output: serde_json::Value =
-    serde_json::from_value(process_result.data.clone()).expect("invalid output");
+    serde_json::from_value(process_result.output.clone()).expect("invalid output");
   assert_eq!(output["input"]["message"], "runner test");
 }
 
@@ -343,8 +345,8 @@ async fn test_workflow_runner_with_sender() {
     return;
   }
 
-  let (config, _temp_dir) = create_test_engine_config();
-  let engine = Arc::new(WorkflowEngine::new(config).expect("failed to create engine"));
+  let (config, _temp_dir) = create_test_executor_config();
+  let engine = Arc::new(WorkflowExecutor::new(config).expect("failed to create engine"));
 
   let workflow = create_simple_workflow();
   let runner = WorkflowRunner::new(workflow, engine);
@@ -381,8 +383,8 @@ async fn test_input_template_resolution() {
     return;
   }
 
-  let (config, _temp_dir) = create_test_engine_config();
-  let engine = WorkflowEngine::new(config).expect("failed to create engine");
+  let (config, _temp_dir) = create_test_executor_config();
+  let engine = WorkflowExecutor::new(config).expect("failed to create engine");
 
   // Create a workflow where the task input uses a filter
   let mut nodes = HashMap::new();
@@ -421,9 +423,9 @@ async fn test_input_template_resolution() {
     .await
     .expect("execution failed");
 
-  let process_result = &result.node_results["process"];
+  let process_result = &result.task_results["process"];
   let output: serde_json::Value =
-    serde_json::from_value(process_result.data.clone()).expect("invalid output");
+    serde_json::from_value(process_result.output.clone()).expect("invalid output");
 
   // The minijinja `upper` filter should have been applied
   assert_eq!(output["input"]["message"], "HELLO");
@@ -431,8 +433,8 @@ async fn test_input_template_resolution() {
 
 #[tokio::test]
 async fn test_orphan_node_validation() {
-  let (config, _temp_dir) = create_test_engine_config();
-  let engine = WorkflowEngine::new(config).expect("failed to create engine");
+  let (config, _temp_dir) = create_test_executor_config();
+  let engine = WorkflowExecutor::new(config).expect("failed to create engine");
 
   // Create a workflow with an orphan node (no incoming edges, not a trigger)
   let mut nodes = HashMap::new();
@@ -495,8 +497,8 @@ async fn test_multiple_triggers() {
     return;
   }
 
-  let (config, _temp_dir) = create_test_engine_config();
-  let engine = WorkflowEngine::new(config).expect("failed to create engine");
+  let (config, _temp_dir) = create_test_executor_config();
+  let engine = WorkflowExecutor::new(config).expect("failed to create engine");
 
   // Create a workflow with two triggers
   let mut nodes = HashMap::new();
@@ -516,7 +518,7 @@ async fn test_multiple_triggers() {
     Node {
       node_id: "join".to_string(),
       node_type: NodeType::Join {
-        strategy: fuschia_config::JoinStrategy::Any,
+        strategy: JoinStrategy::Any,
       },
       inputs: HashMap::new(),
       timeout_ms: None,
@@ -562,11 +564,11 @@ async fn test_multiple_triggers() {
     .expect("workflow execution failed");
 
   // Should have executed all nodes
-  assert_eq!(result.node_results.len(), 4);
-  assert!(result.node_results.contains_key("webhook_trigger"));
-  assert!(result.node_results.contains_key("cron_trigger"));
-  assert!(result.node_results.contains_key("join"));
-  assert!(result.node_results.contains_key("process"));
+  assert_eq!(result.task_results.len(), 4);
+  assert!(result.task_results.contains_key("webhook_trigger"));
+  assert!(result.task_results.contains_key("cron_trigger"));
+  assert!(result.task_results.contains_key("join"));
+  assert!(result.task_results.contains_key("process"));
 }
 
 #[tokio::test]
@@ -578,8 +580,8 @@ async fn test_schema_type_coercion_success() {
     return;
   }
 
-  let (config, _temp_dir) = create_test_engine_config();
-  let engine = WorkflowEngine::new(config).expect("failed to create engine");
+  let (config, _temp_dir) = create_test_executor_config();
+  let engine = WorkflowExecutor::new(config).expect("failed to create engine");
 
   // Create a workflow with typed inputs
   let mut nodes = HashMap::new();
@@ -621,9 +623,9 @@ async fn test_schema_type_coercion_success() {
     .await
     .expect("workflow execution failed");
 
-  let process_result = &result.node_results["process"];
+  let process_result = &result.task_results["process"];
   let output: serde_json::Value =
-    serde_json::from_value(process_result.data.clone()).expect("invalid output");
+    serde_json::from_value(process_result.output.clone()).expect("invalid output");
 
   // Verify the inputs were coerced to correct types
   assert_eq!(output["input"]["count"], 42);
@@ -640,8 +642,8 @@ async fn test_schema_type_coercion_failure() {
     return;
   }
 
-  let (config, _temp_dir) = create_test_engine_config();
-  let engine = WorkflowEngine::new(config).expect("failed to create engine");
+  let (config, _temp_dir) = create_test_executor_config();
+  let engine = WorkflowExecutor::new(config).expect("failed to create engine");
 
   // Create a workflow with typed inputs
   let mut nodes = HashMap::new();

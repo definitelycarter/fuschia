@@ -15,6 +15,7 @@ pub use sqlite::SqliteStore;
 pub use types::{ExecutionStatus, Task, TaskStatus, WorkflowExecution};
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 
 /// Error type for storage operations.
 #[derive(Debug, thiserror::Error)]
@@ -42,7 +43,7 @@ pub trait Store: Send + Sync {
     &self,
     execution_id: &str,
     status: ExecutionStatus,
-    completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    completed_at: Option<DateTime<Utc>>,
   ) -> Result<(), Error>;
 
   /// List executions for a workflow.
@@ -56,6 +57,16 @@ pub trait Store: Send + Sync {
 
   /// Update a task.
   async fn update_task(&self, task: &Task) -> Result<(), Error>;
+
+  /// Update task status and completion fields.
+  async fn update_task_status(
+    &self,
+    task_id: &str,
+    status: TaskStatus,
+    completed_at: Option<DateTime<Utc>>,
+    output: Option<serde_json::Value>,
+    error: Option<String>,
+  ) -> Result<(), Error>;
 
   /// List tasks for an execution.
   async fn list_tasks(&self, execution_id: &str) -> Result<Vec<Task>, Error>;

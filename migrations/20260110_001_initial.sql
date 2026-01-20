@@ -5,6 +5,7 @@ CREATE TABLE workflow_executions (
     workflow_id TEXT NOT NULL,
     status TEXT NOT NULL,
     config TEXT NOT NULL,
+    trigger_payload TEXT NOT NULL,
     started_at TEXT NOT NULL,
     completed_at TEXT
 );
@@ -15,6 +16,8 @@ CREATE TABLE workflow_tasks (
     node_id TEXT NOT NULL,
     status TEXT NOT NULL,
     attempt INTEGER NOT NULL DEFAULT 1,
+    input TEXT,
+    resolved_input TEXT,
     started_at TEXT NOT NULL,
     completed_at TEXT,
     output TEXT,
