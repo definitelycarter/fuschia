@@ -709,23 +709,15 @@ The workflow engine orchestrates execution, handling graph traversal, parallel s
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                     WorkflowRuntime                         │
-│  - owns workflow and wasm engine                            │
-│  - execute_workflow(payload, cancel) → WorkflowExecution    │
-│  - execute_node(node_id, input, cancel) → TaskExecution     │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   WorkflowExecution                         │
-│  - wait() → WorkflowResult                                  │
+│                      WorkflowEngine                         │
+│  - execute(workflow, payload) → ExecutionResult             │
 │  - graph traversal, scheduling                              │
 │  - input resolution via minijinja                           │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    fuschia-task-host                        │
+│                    fuschia-task-host                         │
 │  - execute_task(engine, component, state, ctx, data)        │
 │  - handles wasm instantiation + execution                   │
 └─────────────────────────────────────────────────────────────┘
@@ -733,37 +725,8 @@ The workflow engine orchestrates execution, handling graph traversal, parallel s
 
 **Separation of concerns:**
 - `WorkflowRunner` handles triggering mechanisms (channels, webhooks, poll timers)
-- `WorkflowRuntime` owns the workflow and provides execution handles
-- `WorkflowExecution` handles graph traversal and scheduling
-- `TaskExecution` handles input resolution and wasm execution
-- `fuschia-task-host` handles wasm component instantiation
-
-### WorkflowRuntime
-
-The runtime owns a resolved workflow and provides methods to execute it:
-
-```rust
-impl WorkflowRuntime {
-    /// Create a new runtime with a resolved workflow
-    pub fn new(config: RuntimeConfig, workflow: Workflow) -> Result<Self, RuntimeError>;
-    
-    /// Execute the entire workflow with the given payload
-    pub fn execute_workflow(&self, payload: Value, cancel: CancellationToken) -> WorkflowExecution;
-    
-    /// Execute a single node by ID
-    pub fn execute_node(&self, node_id: &str, input: Value, cancel: CancellationToken) -> Result<TaskExecution, RuntimeError>;
-}
-```
-
-The execution handles (`WorkflowExecution`, `TaskExecution`) are lazy - call `.wait()` to run the execution:
-
-```rust
-// Execute entire workflow
-let result = runtime.execute_workflow(payload, cancel).wait().await?;
-
-// Execute single node
-let result = runtime.execute_node("process", input, cancel)?.wait().await?;
-```
+- `WorkflowEngine` handles execution logic (graph traversal, scheduling, input resolution)
+- `fuschia-task-host` handles wasm component execution
 
 ### WorkflowRunner
 
@@ -771,20 +734,14 @@ The runner provides a channel-based interface for triggering workflow executions
 
 ```rust
 impl WorkflowRunner {
-    /// Create a new runner with a runtime
-    pub fn new(runtime: Arc<WorkflowRuntime>) -> Self;
-    
     /// Trigger a workflow execution with the given payload
-    pub async fn run(&self, payload: serde_json::Value) -> Result<(), RuntimeError>;
+    pub async fn run(&self, payload: serde_json::Value) -> Result<(), Error>;
     
     /// Get a sender handle for webhooks, poll tasks, etc.
     pub fn sender(&self) -> mpsc::Sender<serde_json::Value>;
     
     /// Start the execution loop (blocks until cancelled)
-    pub async fn start(self, cancel: CancellationToken) -> Result<(), RuntimeError>;
-    
-    /// Execute once without the loop (useful for testing)
-    pub async fn execute_once(&self, payload: Value, cancel: CancellationToken) -> Result<WorkflowResult, RuntimeError>;
+    pub async fn start(&mut self, cancel: CancellationToken) -> Result<(), Error>;
 }
 ```
 

@@ -19,19 +19,19 @@ examples/
 ### Run a workflow
 
 ```bash
-echo '{"message": "hello world"}' | cargo run -- --data-dir examples run workflow examples/simple-workflow.json
+echo '{"message": "hello world"}' | cargo run -- run workflow examples/simple-workflow.json --data-dir examples
 ```
 
-### Run a single node
+### Run a single task
 
 ```bash
-echo '{"message": "direct execution"}' | cargo run -- --data-dir examples run node examples/simple-workflow.json process
+echo '{"message": "direct execution"}' | cargo run -- run task examples/simple-workflow.json --node process --data-dir examples
 ```
 
 ### Without piping (empty payload)
 
 ```bash
-cargo run -- --data-dir examples run workflow examples/simple-workflow.json
+cargo run -- run workflow examples/simple-workflow.json --data-dir examples
 ```
 
 ## Rebuilding Components
