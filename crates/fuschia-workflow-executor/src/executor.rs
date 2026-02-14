@@ -16,6 +16,12 @@ use crate::error::ExecutionError;
 use crate::input::{coerce_inputs, extract_schema_types, resolve_inputs};
 use crate::result::ExecutionResult;
 
+/// Handle for a spawned node task. Resolves to either a successful result
+/// or a tuple of (task_id, node_id, error) on failure.
+type NodeHandle = tokio::task::JoinHandle<
+  Result<TaskResult, (String, String, fuschia_task_executor::TaskExecutionError)>,
+>;
+
 /// Configuration for the workflow executor.
 pub struct ExecutorConfig {
   /// Base path for resolving component wasm files.
@@ -241,20 +247,18 @@ impl WorkflowExecutor {
     completed: &HashMap<String, TaskResult>,
     execution_id: &str,
     cancel: &CancellationToken,
-  ) -> Result<
-    Vec<
-      tokio::task::JoinHandle<
-        Result<TaskResult, (String, String, fuschia_task_executor::TaskExecutionError)>,
-      >,
-    >,
-    ExecutionError,
-  > {
+  ) -> Result<Vec<NodeHandle>, ExecutionError> {
     let graph = workflow.graph();
     let mut handles = Vec::with_capacity(ready.len());
 
     for node_id in ready {
-      let node = workflow.get_node(node_id).unwrap().clone();
-      let upstream_ids: Vec<String> = graph.upstream(node_id).iter().cloned().collect();
+      let node = workflow
+        .get_node(node_id)
+        .ok_or_else(|| ExecutionError::InvalidGraph {
+          message: format!("node '{}' not found in workflow", node_id),
+        })?
+        .clone();
+      let upstream_ids: Vec<String> = graph.upstream(node_id).to_vec();
       let is_join = graph.is_join_point(node_id);
 
       // Gather upstream data (using output from completed tasks)
@@ -333,7 +337,15 @@ impl WorkflowExecutor {
         let node_id = node_id_clone;
         match node.node_type {
           NodeType::Component(_) => {
-            let component = component.unwrap();
+            let Some(component) = component else {
+              return Err((
+                task_id,
+                node_id,
+                fuschia_task_executor::TaskExecutionError::UnsupportedTaskType {
+                  message: "component not loaded for component node".to_string(),
+                },
+              ));
+            };
             task_executor
               .execute(&component, task_input, cancel)
               .await

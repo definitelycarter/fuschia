@@ -30,7 +30,6 @@ members = [
   "crates/fuschia-trigger-host",
   "crates/fuschia-workflow",
   "crates/fuschia-world",
-  "apps/desktop/src-tauri",
 ]
 
 [dependencies]

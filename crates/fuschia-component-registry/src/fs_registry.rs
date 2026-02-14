@@ -101,15 +101,15 @@ impl ComponentRegistry for FsComponentRegistry {
         None => continue,
       };
 
-      if let Some((parsed_name, parsed_version)) = Self::parse_dir_name(dir_name) {
-        if parsed_name == name {
-          if let Some(v) = version {
-            if parsed_version == v {
-              return Ok(Some(self.load_component(path).await?));
-            }
-          } else {
-            matching_components.push(self.load_component(path).await?);
+      if let Some((parsed_name, parsed_version)) = Self::parse_dir_name(dir_name)
+        && parsed_name == name
+      {
+        if let Some(v) = version {
+          if parsed_version == v {
+            return Ok(Some(self.load_component(path).await?));
           }
+        } else {
+          matching_components.push(self.load_component(path).await?);
         }
       }
     }
@@ -123,7 +123,7 @@ impl ComponentRegistry for FsComponentRegistry {
     Ok(None)
   }
 
-  async fn install(&self, package_path: &PathBuf) -> Result<InstalledComponent, RegistryError> {
+  async fn install(&self, package_path: &Path) -> Result<InstalledComponent, RegistryError> {
     // Read manifest from the package
     let manifest = self.read_manifest(package_path).await?;
     let target_dir = self.root.join(manifest.dir_name());
@@ -169,10 +169,10 @@ impl ComponentRegistry for FsComponentRegistry {
     let mut entries = fs::read_dir(&self.root).await?;
     while let Some(entry) = entries.next_entry().await? {
       let path = entry.path();
-      if path.is_dir() {
-        if let Ok(manifest) = self.read_manifest(&path).await {
-          manifests.push(manifest);
-        }
+      if path.is_dir()
+        && let Ok(manifest) = self.read_manifest(&path).await
+      {
+        manifests.push(manifest);
       }
     }
 

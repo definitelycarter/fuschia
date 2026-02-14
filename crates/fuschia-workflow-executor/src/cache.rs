@@ -49,7 +49,12 @@ impl ComponentCache {
   ) -> Result<Component, ExecutionError> {
     // Try read lock first
     {
-      let cache = self.cache.read().unwrap();
+      let cache = self
+        .cache
+        .read()
+        .map_err(|e| ExecutionError::InvalidGraph {
+          message: format!("component cache lock poisoned: {}", e),
+        })?;
       if let Some(component) = cache.get(key) {
         return Ok(component.clone());
       }
@@ -63,7 +68,12 @@ impl ComponentCache {
       })?;
 
     {
-      let mut cache = self.cache.write().unwrap();
+      let mut cache = self
+        .cache
+        .write()
+        .map_err(|e| ExecutionError::InvalidGraph {
+          message: format!("component cache lock poisoned: {}", e),
+        })?;
       cache.insert(key.clone(), component.clone());
     }
 
@@ -72,7 +82,7 @@ impl ComponentCache {
 
   /// Clear the cache.
   pub fn clear(&self) {
-    let mut cache = self.cache.write().unwrap();
+    let mut cache = self.cache.write().unwrap_or_else(|e| e.into_inner());
     cache.clear();
   }
 }

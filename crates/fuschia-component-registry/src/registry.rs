@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 
@@ -31,7 +31,7 @@ pub trait ComponentRegistry: Send + Sync {
 
   /// Install a component from a package directory or archive.
   /// The package should contain manifest.json and component.wasm.
-  async fn install(&self, package_path: &PathBuf) -> Result<InstalledComponent, RegistryError>;
+  async fn install(&self, package_path: &Path) -> Result<InstalledComponent, RegistryError>;
 
   /// List all installed components.
   async fn list(&self) -> Result<Vec<ComponentManifest>, RegistryError>;

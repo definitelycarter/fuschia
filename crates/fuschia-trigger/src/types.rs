@@ -21,7 +21,7 @@ pub enum Trigger {
   Manual,
 
   /// Component trigger - wasm component that handles poll or webhook events
-  Component(ComponentTrigger),
+  Component(Box<ComponentTrigger>),
 }
 
 /// Component trigger - wasm component that handles events.

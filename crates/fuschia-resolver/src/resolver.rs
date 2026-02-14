@@ -102,10 +102,8 @@ impl<R: ComponentRegistry> StandardResolver<R> {
     }
 
     for node_id in node_ids {
-      if color.get(node_id.as_str()) == Some(&0) {
-        if dfs(node_id.as_str(), &adjacency, &mut color) {
-          return Err(ResolveError::CycleDetected);
-        }
+      if color.get(node_id.as_str()) == Some(&0) && dfs(node_id.as_str(), &adjacency, &mut color) {
+        return Err(ResolveError::CycleDetected);
       }
     }
 
@@ -324,7 +322,7 @@ mod tests {
   use super::*;
   use fuschia_component_registry::{ComponentManifest, RegistryError};
   use fuschia_config::{ComponentRef, Edge, JoinStrategy};
-  use std::path::PathBuf;
+  use std::path::{Path, PathBuf};
   use std::sync::Mutex;
 
   /// Mock component registry for testing.
@@ -409,7 +407,7 @@ mod tests {
       Ok(None)
     }
 
-    async fn install(&self, _package_path: &PathBuf) -> Result<InstalledComponent, RegistryError> {
+    async fn install(&self, _package_path: &Path) -> Result<InstalledComponent, RegistryError> {
       unimplemented!("not needed for tests")
     }
 

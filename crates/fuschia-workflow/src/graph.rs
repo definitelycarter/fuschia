@@ -39,7 +39,7 @@ impl Graph {
     // Find entry points (no incoming edges)
     let entry_points: Vec<String> = nodes
       .keys()
-      .filter(|id| reverse_adjacency.get(*id).map_or(true, |v| v.is_empty()))
+      .filter(|id| reverse_adjacency.get(*id).is_none_or(|v| v.is_empty()))
       .cloned()
       .collect();
 

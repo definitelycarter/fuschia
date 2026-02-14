@@ -14,7 +14,7 @@ pub enum Task {
   /// Wasm component task.
   Component {
     /// The installed component to execute.
-    component: InstalledComponent,
+    component: Box<InstalledComponent>,
   },
 }
 
