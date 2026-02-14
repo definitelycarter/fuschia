@@ -21,11 +21,10 @@ members = [
   "crates/fuschia-engine",
   "crates/fuschia-host",
   "crates/fuschia-resolver",
+  "crates/fuschia-runtime",
   "crates/fuschia-store",
   "crates/fuschia-task",
-  "crates/fuschia-task-executor",
   "crates/fuschia-task-host",
-  "crates/fuschia-workflow-executor",
   "crates/fuschia-trigger",
   "crates/fuschia-trigger-host",
   "crates/fuschia-workflow",
@@ -43,4 +42,4 @@ anyhow = "1"
 fuschia-config = { path = "crates/fuschia-config" }
 fuschia-component-registry = { path = "crates/fuschia-component-registry" }
 fuschia-resolver = { path = "crates/fuschia-resolver" }
-fuschia-engine = { path = "crates/fuschia-engine" }
+fuschia-runtime = { path = "crates/fuschia-runtime" }

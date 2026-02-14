@@ -354,7 +354,8 @@ This makes invalid states unrepresentable - you cannot specify a component witho
 
 ### Trigger Node Validation
 
-The engine validates that:
+The runtime validates that:
+- Exactly one trigger node exists per workflow
 - All trigger nodes are entry points (no incoming edges)
 - All entry points are trigger nodes (orphan non-trigger nodes are errors)
 - Trigger component references resolve to valid installed components
@@ -703,30 +704,33 @@ The workflow engine orchestrates execution, handling graph traversal, parallel s
 ┌─────────────────────────────────────────────────────────────┐
 │                      WorkflowRunner                         │
 │  - owns mpsc channel (sender + receiver)                    │
+│  - owns Arc<Runtime>                                        │
 │  - run(payload) triggers execution                          │
 │  - start(cancel) runs the execution loop                    │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                      WorkflowEngine                         │
-│  - execute(workflow, payload) → ExecutionResult             │
-│  - graph traversal, scheduling                              │
-│  - input resolution via minijinja                           │
+│                        Runtime                              │
+│  - invoke(payload, cancel) → InvokeResult                   │
+│  - invoke_node(node_id, payload, cancel) → NodeResult       │
+│  - trigger execution, graph traversal, scheduling           │
+│  - input resolution via minijinja, type coercion            │
+│  - component caching                                        │
 └─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    fuschia-task-host                         │
-│  - execute_task(engine, component, state, ctx, data)        │
-│  - handles wasm instantiation + execution                   │
-└─────────────────────────────────────────────────────────────┘
+                         │              │
+                         ▼              ▼
+┌──────────────────────────┐ ┌──────────────────────────────┐
+│    fuschia-task-host     │ │   fuschia-trigger-host       │
+│  - execute_task(...)     │ │  - execute_trigger(...)      │
+│  - task wasm execution   │ │  - trigger wasm execution    │
+└──────────────────────────┘ └──────────────────────────────┘
 ```
 
 **Separation of concerns:**
 - `WorkflowRunner` handles triggering mechanisms (channels, webhooks, poll timers)
-- `WorkflowEngine` handles execution logic (graph traversal, scheduling, input resolution)
-- `fuschia-task-host` handles wasm component execution
+- `Runtime` handles execution logic (trigger execution, graph traversal, scheduling, input resolution)
+- `fuschia-task-host` / `fuschia-trigger-host` handle wasm component execution
 
 ### WorkflowRunner
 
@@ -752,9 +756,9 @@ This design allows:
 
 ### Execution Loop
 
-The engine executes workflows using a wave-based approach:
+The runtime executes workflows using a wave-based approach:
 
-1. Start with trigger nodes (entry points) - their `data` is the trigger payload
+1. Execute the trigger node's wasm component (if present). If it returns `Pending`, short-circuit — the workflow completes without running the graph. If it returns `Completed(data)`, use the data as the trigger's output and proceed.
 2. Find all "ready" nodes (nodes whose upstream dependencies are complete)
 3. Execute ready nodes in parallel via tokio tasks
 4. Wait for all to complete, store results
@@ -783,18 +787,24 @@ pub struct ComponentCache {
 - **Instantiate fresh:** Each execution gets a fresh instance for isolation
 - **Thread-safe:** `RwLock` allows concurrent reads with exclusive writes
 
-### Execution Errors
+### Runtime Errors
 
 ```rust
-pub enum ExecutionError {
-    /// Input template resolution failed
-    InputResolution { node_id: String, message: String },
-    /// Component execution failed
-    ComponentExecution { node_id: String, source: HostError },
-    /// Workflow was cancelled
+pub enum RuntimeError {
+    /// Execution was cancelled
     Cancelled,
-    /// Node execution timed out
-    Timeout { node_id: String },
+    /// Failed to serialize component input
+    InputSerialization { message: String },
+    /// Component execution failed
+    ComponentExecution { source: HostError },
+    /// Failed to parse component output
+    InvalidOutput { message: String },
+    /// Input template resolution or type coercion failed
+    InputResolution { node_id: String, message: String },
+    /// Failed to load/compile a wasm component
+    ComponentLoad { node_id: String, message: String },
+    /// Invalid workflow graph structure
+    InvalidGraph { message: String },
 }
 ```
 

@@ -1,7 +1,7 @@
 //! Fuschia Workflow Engine
 //!
 //! This crate provides the workflow execution engine for fuschia.
-//! It re-exports types from `fuschia-workflow-executor` and provides
+//! It re-exports types from `fuschia-runtime` and provides
 //! a `WorkflowRunner` for channel-based workflow triggering.
 //!
 //! # Architecture
@@ -16,33 +16,35 @@
 //!                               │
 //!                               ▼
 //! ┌─────────────────────────────────────────────────────────────┐
-//! │                    WorkflowExecutor                         │
-//! │  - execute(workflow, payload, cancel) → ExecutionResult     │
+//! │                        Runtime                              │
+//! │  - invoke(payload, cancel) → InvokeResult                   │
+//! │  - invoke_node(node_id, payload, cancel) → NodeResult       │
 //! │  - graph traversal, scheduling                              │
 //! │  - input resolution via minijinja                           │
 //! └─────────────────────────────────────────────────────────────┘
 //!                               │
 //!                               ▼
 //! ┌─────────────────────────────────────────────────────────────┐
-//! │                      TaskExecutor                           │
-//! │  - executes individual tasks via wasm runtime               │
+//! │                    TaskExecutor / TriggerExecutor            │
+//! │  - executes individual components via wasm runtime           │
 //! └─────────────────────────────────────────────────────────────┘
 //! ```
 //!
 //! # Usage
 //!
 //! ```ignore
-//! use fuschia_engine::{WorkflowExecutor, WorkflowRunner, ExecutorConfig};
+//! use fuschia_engine::WorkflowRunner;
+//! use fuschia_runtime::{Runtime, RuntimeConfig};
 //! use tokio_util::sync::CancellationToken;
 //!
-//! // Create the executor
-//! let config = ExecutorConfig {
+//! // Create the runtime
+//! let config = RuntimeConfig {
 //!     component_base_path: PathBuf::from("/path/to/components"),
 //! };
-//! let executor = Arc::new(WorkflowExecutor::new(config)?);
+//! let runtime = Arc::new(Runtime::new(workflow, config)?);
 //!
-//! // Create a runner for a workflow
-//! let runner = WorkflowRunner::new(workflow, executor);
+//! // Create a runner
+//! let runner = WorkflowRunner::new(runtime);
 //!
 //! // Get sender for external triggers
 //! let sender = runner.sender();
@@ -54,9 +56,7 @@
 
 mod runner;
 
-// Re-export from fuschia-workflow-executor
-pub use fuschia_workflow_executor::{
-  ExecutionError, ExecutionResult, ExecutorConfig, TaskResult, WorkflowExecutor,
-};
+// Re-export from fuschia-runtime
+pub use fuschia_runtime::{InvokeResult, NodeResult, Runtime, RuntimeConfig, RuntimeError};
 
 pub use runner::WorkflowRunner;

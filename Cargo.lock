@@ -867,8 +867,8 @@ dependencies = [
  "dirs",
  "fuschia-component-registry",
  "fuschia-config",
- "fuschia-engine",
  "fuschia-resolver",
+ "fuschia-runtime",
  "serde_json",
  "tokio",
  "tokio-util",
@@ -912,8 +912,8 @@ version = "0.0.1-alpha.0"
 dependencies = [
  "fuschia-component-registry",
  "fuschia-config",
+ "fuschia-runtime",
  "fuschia-workflow",
- "fuschia-workflow-executor",
  "serde_json",
  "tempfile",
  "tokio",
@@ -945,6 +945,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuschia-runtime"
+version = "0.0.1-alpha.0"
+dependencies = [
+ "fuschia-config",
+ "fuschia-host",
+ "fuschia-task-host",
+ "fuschia-trigger-host",
+ "fuschia-workflow",
+ "futures",
+ "minijinja",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+ "wasmtime",
+]
+
+[[package]]
 name = "fuschia-store"
 version = "0.0.1-alpha.0"
 dependencies = [
@@ -966,21 +988,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.17",
  "tokio",
-]
-
-[[package]]
-name = "fuschia-task-executor"
-version = "0.0.1-alpha.0"
-dependencies = [
- "fuschia-host",
- "fuschia-task-host",
- "serde",
- "serde_json",
- "thiserror 2.0.17",
- "tokio",
- "tokio-util",
- "tracing",
- "wasmtime",
 ]
 
 [[package]]
@@ -1029,25 +1036,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.17",
-]
-
-[[package]]
-name = "fuschia-workflow-executor"
-version = "0.0.1-alpha.0"
-dependencies = [
- "fuschia-config",
- "fuschia-task-executor",
- "fuschia-workflow",
- "futures",
- "minijinja",
- "serde",
- "serde_json",
- "thiserror 2.0.17",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
- "wasmtime",
 ]
 
 [[package]]

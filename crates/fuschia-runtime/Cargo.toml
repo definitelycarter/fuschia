@@ -1,0 +1,29 @@
+[package]
+name = "fuschia-runtime"
+edition.workspace = true
+version.workspace = true
+description = "Workflow runtime for fuschia - component execution, graph traversal, and orchestration"
+
+[dependencies]
+fuschia-config = { path = "../fuschia-config" }
+fuschia-task-host = { path = "../fuschia-task-host" }
+fuschia-trigger-host = { path = "../fuschia-trigger-host" }
+fuschia-host = { path = "../fuschia-host" }
+fuschia-workflow = { path = "../fuschia-workflow" }
+wasmtime = { version = "40", features = ["component-model", "async"] }
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+minijinja = "2"
+uuid = { version = "1", features = ["v4"] }
+thiserror = "2"
+tracing = "0.1"
+
+[dev-dependencies]
+fuschia-host = { path = "../fuschia-host" }
+fuschia-task-host = { path = "../fuschia-task-host" }
+fuschia-trigger-host = { path = "../fuschia-trigger-host" }
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

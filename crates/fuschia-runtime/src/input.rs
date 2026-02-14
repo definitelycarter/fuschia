@@ -22,11 +22,10 @@
 
 use std::collections::HashMap;
 
-use fuschia_config::InputValue;
 use minijinja::{Environment, Value};
 use serde_json::json;
 
-use crate::error::ExecutionError;
+use crate::error::RuntimeError;
 
 /// JSON Schema type definitions for input coercion.
 #[derive(Debug, Clone, PartialEq)]
@@ -84,10 +83,10 @@ pub fn extract_schema_types(json_schema: &serde_json::Value) -> HashMap<String, 
 /// * `is_join` - Whether this is a join node (multiple upstream)
 pub fn resolve_inputs(
   node_id: &str,
-  inputs: &HashMap<String, InputValue>,
+  inputs: &HashMap<String, String>,
   upstream_data: &HashMap<String, serde_json::Value>,
   is_join: bool,
-) -> Result<HashMap<String, String>, ExecutionError> {
+) -> Result<HashMap<String, String>, RuntimeError> {
   let env = Environment::new();
 
   // Build the context based on whether this is a join node
@@ -126,10 +125,10 @@ fn resolve_template(
   input_key: &str,
   template: &str,
   context: &Value,
-) -> Result<String, ExecutionError> {
+) -> Result<String, RuntimeError> {
   env
     .render_str(template, context.clone())
-    .map_err(|e| ExecutionError::InputResolution {
+    .map_err(|e| RuntimeError::InputResolution {
       node_id: node_id.to_string(),
       message: format!("failed to resolve input '{}': {}", input_key, e),
     })
@@ -145,7 +144,7 @@ pub fn coerce_inputs(
   node_id: &str,
   resolved: &HashMap<String, String>,
   schema: &HashMap<String, SchemaType>,
-) -> Result<serde_json::Value, ExecutionError> {
+) -> Result<serde_json::Value, RuntimeError> {
   let mut result = serde_json::Map::new();
 
   for (key, value) in resolved {
@@ -163,7 +162,7 @@ fn coerce_value(
   input_key: &str,
   value: &str,
   schema_type: &SchemaType,
-) -> Result<serde_json::Value, ExecutionError> {
+) -> Result<serde_json::Value, RuntimeError> {
   match schema_type {
     SchemaType::String => Ok(serde_json::Value::String(value.to_string())),
 
@@ -174,7 +173,7 @@ fn coerce_value(
           .map(serde_json::Value::Number)
           .unwrap_or(serde_json::Value::Null)
       })
-      .map_err(|_| ExecutionError::InputResolution {
+      .map_err(|_| RuntimeError::InputResolution {
         node_id: node_id.to_string(),
         message: format!("input '{}' expected number, got '{}'", input_key, value),
       }),
@@ -182,7 +181,7 @@ fn coerce_value(
     SchemaType::Integer => value
       .parse::<i64>()
       .map(|n| serde_json::Value::Number(n.into()))
-      .map_err(|_| ExecutionError::InputResolution {
+      .map_err(|_| RuntimeError::InputResolution {
         node_id: node_id.to_string(),
         message: format!("input '{}' expected integer, got '{}'", input_key, value),
       }),
@@ -190,7 +189,7 @@ fn coerce_value(
     SchemaType::Boolean => match value.to_lowercase().as_str() {
       "true" => Ok(serde_json::Value::Bool(true)),
       "false" => Ok(serde_json::Value::Bool(false)),
-      _ => Err(ExecutionError::InputResolution {
+      _ => Err(RuntimeError::InputResolution {
         node_id: node_id.to_string(),
         message: format!("input '{}' expected boolean, got '{}'", input_key, value),
       }),
@@ -200,24 +199,22 @@ fn coerce_value(
       if value.is_empty() || value == "null" {
         Ok(serde_json::Value::Null)
       } else {
-        Err(ExecutionError::InputResolution {
+        Err(RuntimeError::InputResolution {
           node_id: node_id.to_string(),
           message: format!("input '{}' expected null, got '{}'", input_key, value),
         })
       }
     }
 
-    SchemaType::Array => serde_json::from_str(value).map_err(|e| ExecutionError::InputResolution {
+    SchemaType::Array => serde_json::from_str(value).map_err(|e| RuntimeError::InputResolution {
       node_id: node_id.to_string(),
       message: format!("input '{}' expected array: {}", input_key, e),
     }),
 
-    SchemaType::Object => {
-      serde_json::from_str(value).map_err(|e| ExecutionError::InputResolution {
-        node_id: node_id.to_string(),
-        message: format!("input '{}' expected object: {}", input_key, e),
-      })
-    }
+    SchemaType::Object => serde_json::from_str(value).map_err(|e| RuntimeError::InputResolution {
+      node_id: node_id.to_string(),
+      message: format!("input '{}' expected object: {}", input_key, e),
+    }),
   }
 }
 
@@ -285,7 +282,6 @@ mod tests {
 
     let result = resolve_inputs("node", &inputs, &upstream_data, false).unwrap();
 
-    // All values are strings at this stage - schema validation parses them later
     assert_eq!(result["count"], "42");
     assert_eq!(result["enabled"], "true");
     assert_eq!(result["message"], "hello world");
@@ -301,7 +297,6 @@ mod tests {
 
     let result = resolve_inputs("node", &inputs, &upstream_data, false).unwrap();
 
-    // Minijinja renders numbers as their string representation
     assert_eq!(result["from_template"], "100");
   }
 
@@ -347,8 +342,6 @@ mod tests {
 
     assert_eq!(result["greeting"], "Hello Alice, you have 5 messages");
   }
-
-  // Coercion tests
 
   #[test]
   fn test_coerce_string() {

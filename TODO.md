@@ -16,7 +16,8 @@
 | `fuschia-host` | Shared wasmtime infrastructure (Engine, Store setup, epoch timeout, pluggable KvStore trait) | Done |
 | `fuschia-task-host` | Task component execution, binds to task-component world, implements kv/config/log host imports | Done |
 | `fuschia-trigger-host` | Trigger component execution, binds to trigger-component world, implements kv/config/log host imports | Done |
-| `fuschia-engine` | Workflow orchestration, graph execution, parallel scheduling, input resolution | Done |
+| `fuschia-runtime` | Workflow runtime. `invoke(payload, cancel)` for full workflow execution, `invoke_node(node_id, payload, cancel)` for single-node debugging. Trigger execution, graph traversal, parallel scheduling, input resolution, type coercion, component caching. | Done |
+| `fuschia-engine` | Daemon/trigger layer. `WorkflowRunner` owns `Arc<Runtime>`, channel-based triggering. Re-exports key types from `fuschia-runtime`. | Done |
 
 ## Crates - Outstanding
 
@@ -52,17 +53,20 @@
 | WASI Preview 2 support | WasiView, ResourceTable, p2::add_to_linker_async for component WASI imports | `fuschia-task-host`, `fuschia-trigger-host` |
 | Test wasm components | test-task-component and test-trigger-component for integration testing | `test-components/` |
 | Integration tests | Tests for task and trigger host execution with real wasm components | `fuschia-task-host`, `fuschia-trigger-host` |
-| Workflow engine | Graph traversal with parallel node execution via tokio tasks | `fuschia-engine` |
-| WorkflowRunner | Channel-based workflow triggering with mpsc sender/receiver | `fuschia-engine` |
-| Input resolution | Minijinja templating for node inputs (`{{ field }}`, `{{ name \| upper }}`) | `fuschia-engine` |
-| Component caching | Compile wasm once, instantiate on-demand per execution | `fuschia-engine` |
-| Cancellation support | CancellationToken for workflow-level and epoch interruption for node-level | `fuschia-engine` |
-| Parallel branch execution | Spawn concurrent tokio tasks for independent graph branches | `fuschia-engine` |
+| Workflow runtime | `Runtime` with `invoke(payload, cancel)` and `invoke_node(node_id, payload, cancel)` | `fuschia-runtime` |
+| Trigger execution | Execute trigger wasm component during `invoke`, short-circuit on `Pending` | `fuschia-runtime` |
+| Single trigger validation | Workflows must have exactly one trigger node | `fuschia-runtime` |
+| Graph traversal | Wave-based parallel node execution via tokio tasks | `fuschia-runtime` |
+| WorkflowRunner | Channel-based workflow triggering with mpsc sender/receiver, owns `Arc<Runtime>` | `fuschia-engine` |
+| Input resolution | Minijinja templating for node inputs (`{{ field }}`, `{{ name \| upper }}`) | `fuschia-runtime` |
+| Component caching | Compile wasm once, instantiate on-demand per execution | `fuschia-runtime` |
+| Cancellation support | CancellationToken for workflow-level and epoch interruption for node-level | `fuschia-runtime` |
+| Parallel branch execution | Spawn concurrent tokio tasks for independent graph branches | `fuschia-runtime` |
 | NodeType::Trigger | Proper trigger node type with TriggerType (Manual, Poll, Webhook) | `fuschia-config`, `fuschia-workflow` |
 | TriggerComponentRef | Type-safe pairing of component + trigger_name for trigger nodes | `fuschia-config` |
 | LockedTriggerComponent | Locked trigger component with digest and trigger export name | `fuschia-workflow` |
-| Orphan node detection | Validation that non-trigger nodes must have incoming edges | `fuschia-engine` |
-| Input type coercion | Parse resolved template strings to typed JSON values (string, number, boolean, etc.) | `fuschia-engine` |
+| Orphan node detection | Validation that non-trigger nodes must have incoming edges | `fuschia-runtime` |
+| Input type coercion | Parse resolved template strings to typed JSON values (string, number, boolean, etc.) | `fuschia-runtime` |
 | Simplified InputValue | InputValue is now a type alias for String (all inputs are templates) | `fuschia-config` |
 | Schema in LockedComponent | `input_schema` copied from manifest at lock time for self-contained execution | `fuschia-workflow`, `fuschia-resolver` |
 | Task/trigger name in locked types | `task_name` and `trigger_name` identify which export to use from component | `fuschia-config`, `fuschia-workflow` |
@@ -72,9 +76,9 @@
 | Feature | Description | Notes |
 |---------|-------------|-------|
 | HTTP outbound for components | Add `wasi:http/outgoing-handler` to platform world | Requires wasmtime-wasi-http integration |
-| Join node handling | Wait for branches, apply strategy (All/Any) | Needs `fuschia-engine` enhancement |
-| Loop execution | Iterate over collection, execute nested workflow | Needs `fuschia-engine` enhancement |
-| Retry logic | Retry failed nodes per policy | Needs `fuschia-engine` enhancement |
+| Join node handling | Wait for branches, apply strategy (All/Any) | Needs `fuschia-runtime` enhancement |
+| Loop execution | Iterate over collection, execute nested workflow | Needs `fuschia-runtime` enhancement |
+| Retry logic | Retry failed nodes per policy | Needs `fuschia-runtime` enhancement |
 | Observability | OpenTelemetry tracing to Jaeger | Needs integration across crates |
 | Component packaging | Bundle manifest + wasm + readme + assets into .fcpkg | Needs `fuschia-cli` |
 | Store integration | Persist execution records to fuschia-store | Needs `fuschia-engine` enhancement |
@@ -99,7 +103,7 @@
 |-----|-------------|----------|
 | Join node validation | Doesn't validate that `Join` nodes actually have multiple incoming edges | Medium |
 
-### fuschia-engine
+### fuschia-runtime
 
 | Gap | Description | Priority |
 |-----|-------------|----------|
@@ -142,14 +146,14 @@ The wasmtime hosting layer is split into three crates:
 
 ### Workflow Engine Architecture
 
-The engine layer is split into runner and engine:
+The execution layer is split into runtime and runner:
 
 | Type | Responsibility |
 |------|----------------|
-| `WorkflowRunner` | Owns mpsc channel (sender + receiver), provides `run(payload)` for direct triggering, `sender()` for webhook/poll handlers, `start(cancel)` for execution loop |
-| `WorkflowEngine` | Executes workflow given payload, handles graph traversal, parallel scheduling, input resolution via minijinja |
+| `Runtime` | Executes workflow given payload. `invoke(payload, cancel)` for full workflow execution, `invoke_node(node_id, payload, cancel)` for single-node debugging. Handles trigger execution, graph traversal, parallel scheduling, input resolution via minijinja, type coercion, and component caching. |
+| `WorkflowRunner` | Daemon/trigger layer. Owns `Arc<Runtime>` and mpsc channel (sender + receiver). Provides `run(payload)` for direct triggering, `sender()` for webhook/poll handlers, `start(cancel)` for execution loop. |
 
-**Rationale:** Separation between triggering mechanism (Runner) and execution logic (Engine). Triggers are decoupled from workflow execution.
+**Rationale:** The runtime is the single crate responsible for workflow execution. The CLI can use the runtime directly for one-shot modes. The runner wraps the runtime for daemon/channel-based triggering.
 
 ### Input Resolution
 
@@ -235,20 +239,26 @@ enum TaskHostError {
 }
 ```
 
-**Note:** `ComponentError` doesn't automatically mean task failure. The engine decides based on workflow config whether it's "failed" or "completed with errors".
+**Note:** `ComponentError` doesn't automatically mean task failure. The runtime decides based on workflow config whether it's "failed" or "completed with errors".
 
-Workflow execution errors:
+Runtime errors:
 
 ```rust
-enum ExecutionError {
-    /// Input template resolution failed
-    InputResolution { node_id: String, message: String },
-    /// Component execution failed
-    ComponentExecution { node_id: String, source: HostError },
-    /// Workflow was cancelled
+enum RuntimeError {
+    /// Execution was cancelled
     Cancelled,
-    /// Node execution timed out
-    Timeout { node_id: String },
+    /// Failed to serialize component input
+    InputSerialization { message: String },
+    /// Component execution failed
+    ComponentExecution { source: HostError },
+    /// Failed to parse component output
+    InvalidOutput { message: String },
+    /// Input template resolution or type coercion failed
+    InputResolution { node_id: String, message: String },
+    /// Failed to load/compile a wasm component
+    ComponentLoad { node_id: String, message: String },
+    /// Invalid workflow graph structure
+    InvalidGraph { message: String },
 }
 ```
 

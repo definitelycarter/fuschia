@@ -1,17 +1,15 @@
-//! Integration tests for fuschia-engine using real wasm components.
+//! Integration tests for Runtime::invoke using real wasm components.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
 
-use fuschia_component_registry::TriggerType;
-use fuschia_config::JoinStrategy;
-use fuschia_engine::{Runtime, RuntimeConfig, RuntimeError, WorkflowRunner};
+use fuschia_config::{JoinStrategy, TriggerType};
+use fuschia_runtime::{Runtime, RuntimeConfig, RuntimeError};
 use fuschia_workflow::{LockedComponent, LockedTrigger, Node, NodeType, Workflow};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
-/// Path to the test task component relative to the test crate.
+/// Path to the test task component.
 const TEST_COMPONENT_PATH: &str =
   "../../test-components/test-task-component/target/wasm32-wasip1/release/test_task_component.wasm";
 
@@ -23,16 +21,13 @@ fn component_exists() -> bool {
   test_component_path().exists()
 }
 
-/// Create a RuntimeConfig that points to a temp directory where we'll
-/// symlink the test component.
+/// Create a RuntimeConfig that points to a temp directory where we symlink the test component.
 fn create_test_config() -> (RuntimeConfig, tempfile::TempDir) {
   let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
 
-  // Create the component directory structure: <base>/test-task--1.0.0/component.wasm
   let component_dir = temp_dir.path().join("test-task--1.0.0");
   std::fs::create_dir_all(&component_dir).expect("failed to create component dir");
 
-  // Symlink or copy the test component
   let src = test_component_path();
   let dst = component_dir.join("component.wasm");
 
@@ -49,7 +44,6 @@ fn create_test_config() -> (RuntimeConfig, tempfile::TempDir) {
   (config, temp_dir)
 }
 
-/// Create a test LockedComponent with default schema.
 fn test_locked_component() -> LockedComponent {
   LockedComponent {
     name: "test-task".to_string(),
@@ -65,7 +59,6 @@ fn test_locked_component() -> LockedComponent {
   }
 }
 
-/// Create a test LockedComponent with typed schema for coercion tests.
 fn test_locked_component_with_typed_schema() -> LockedComponent {
   LockedComponent {
     name: "test-task".to_string(),
@@ -83,7 +76,6 @@ fn test_locked_component_with_typed_schema() -> LockedComponent {
   }
 }
 
-/// Create a manual trigger node.
 fn create_manual_trigger(node_id: &str) -> Node {
   Node {
     node_id: node_id.to_string(),
@@ -98,7 +90,6 @@ fn create_manual_trigger(node_id: &str) -> Node {
   }
 }
 
-/// Create a simple workflow with a trigger node and one task node.
 fn create_simple_workflow() -> Workflow {
   let mut nodes = HashMap::new();
 
@@ -129,7 +120,6 @@ fn create_simple_workflow() -> Workflow {
   }
 }
 
-/// Create a workflow with two parallel branches that converge at a join node.
 fn create_parallel_workflow() -> Workflow {
   let mut nodes = HashMap::new();
 
@@ -195,11 +185,9 @@ fn create_parallel_workflow() -> Workflow {
 }
 
 #[tokio::test]
-async fn test_simple_workflow_execution() {
+async fn test_simple_invoke() {
   if !component_exists() {
-    eprintln!(
-      "Skipping test: test component not built. Run `cargo component build --release` in test-components/test-task-component"
-    );
+    eprintln!("Skipping test: test component not built");
     return;
   }
 
@@ -213,7 +201,7 @@ async fn test_simple_workflow_execution() {
   let result = runtime
     .invoke(payload, cancel)
     .await
-    .expect("workflow execution failed");
+    .expect("invoke failed");
 
   assert_eq!(result.node_results.len(), 2);
   assert!(result.node_results.contains_key("trigger"));
@@ -225,11 +213,9 @@ async fn test_simple_workflow_execution() {
 }
 
 #[tokio::test]
-async fn test_parallel_workflow_execution() {
+async fn test_parallel_branches_with_join() {
   if !component_exists() {
-    eprintln!(
-      "Skipping test: test component not built. Run `cargo component build --release` in test-components/test-task-component"
-    );
+    eprintln!("Skipping test: test component not built");
     return;
   }
 
@@ -243,7 +229,7 @@ async fn test_parallel_workflow_execution() {
   let result = runtime
     .invoke(payload, cancel)
     .await
-    .expect("workflow execution failed");
+    .expect("invoke failed");
 
   assert_eq!(result.node_results.len(), 4);
   assert!(result.node_results.contains_key("trigger"));
@@ -263,11 +249,9 @@ async fn test_parallel_workflow_execution() {
 }
 
 #[tokio::test]
-async fn test_workflow_cancellation() {
+async fn test_invoke_cancellation() {
   if !component_exists() {
-    eprintln!(
-      "Skipping test: test component not built. Run `cargo component build --release` in test-components/test-task-component"
-    );
+    eprintln!("Skipping test: test component not built");
     return;
   }
 
@@ -284,68 +268,9 @@ async fn test_workflow_cancellation() {
 }
 
 #[tokio::test]
-async fn test_workflow_runner() {
-  if !component_exists() {
-    eprintln!(
-      "Skipping test: test component not built. Run `cargo component build --release` in test-components/test-task-component"
-    );
-    return;
-  }
-
-  let (config, _temp_dir) = create_test_config();
-  let workflow = create_simple_workflow();
-  let runtime = Arc::new(Runtime::new(workflow, config).expect("failed to create runtime"));
-  let runner = WorkflowRunner::new(runtime);
-
-  let cancel = CancellationToken::new();
-  let result = runner
-    .execute_once(json!({ "message": "runner test" }), cancel)
-    .await
-    .expect("execution failed");
-
-  assert_eq!(result.node_results.len(), 2);
-
-  let process_result = &result.node_results["process"];
-  assert_eq!(process_result.output["input"]["message"], "runner test");
-}
-
-#[tokio::test]
-async fn test_workflow_runner_with_sender() {
-  if !component_exists() {
-    eprintln!(
-      "Skipping test: test component not built. Run `cargo component build --release` in test-components/test-task-component"
-    );
-    return;
-  }
-
-  let (config, _temp_dir) = create_test_config();
-  let workflow = create_simple_workflow();
-  let runtime = Arc::new(Runtime::new(workflow, config).expect("failed to create runtime"));
-  let runner = WorkflowRunner::new(runtime);
-  let sender = runner.sender();
-
-  let cancel = CancellationToken::new();
-  let cancel_clone = cancel.clone();
-
-  let handle = tokio::spawn(async move { runner.start(cancel_clone).await });
-
-  sender
-    .send(json!({ "message": "from sender" }))
-    .await
-    .expect("send failed");
-
-  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-  cancel.cancel();
-
-  handle.await.expect("join failed").expect("runner failed");
-}
-
-#[tokio::test]
 async fn test_input_template_resolution() {
   if !component_exists() {
-    eprintln!(
-      "Skipping test: test component not built. Run `cargo component build --release` in test-components/test-task-component"
-    );
+    eprintln!("Skipping test: test component not built");
     return;
   }
 
@@ -385,10 +310,113 @@ async fn test_input_template_resolution() {
   let result = runtime
     .invoke(payload, cancel)
     .await
-    .expect("execution failed");
+    .expect("invoke failed");
 
   let process_result = &result.node_results["process"];
   assert_eq!(process_result.output["input"]["message"], "HELLO");
+}
+
+#[tokio::test]
+async fn test_type_coercion() {
+  if !component_exists() {
+    eprintln!("Skipping test: test component not built");
+    return;
+  }
+
+  let (config, _temp_dir) = create_test_config();
+
+  let mut nodes = HashMap::new();
+  nodes.insert("trigger".to_string(), create_manual_trigger("trigger"));
+
+  let mut task_inputs = HashMap::new();
+  task_inputs.insert("count".to_string(), "{{ count }}".to_string());
+  task_inputs.insert("enabled".to_string(), "{{ enabled }}".to_string());
+  task_inputs.insert("name".to_string(), "{{ name }}".to_string());
+
+  nodes.insert(
+    "process".to_string(),
+    Node {
+      node_id: "process".to_string(),
+      node_type: NodeType::Component(test_locked_component_with_typed_schema()),
+      inputs: task_inputs,
+      timeout_ms: None,
+      max_retry_attempts: None,
+      fail_workflow: true,
+    },
+  );
+
+  let workflow = Workflow {
+    workflow_id: "coercion-test".to_string(),
+    name: "Coercion Test".to_string(),
+    nodes,
+    edges: vec![("trigger".to_string(), "process".to_string())],
+    timeout_ms: None,
+    max_retry_attempts: None,
+  };
+
+  let runtime = Runtime::new(workflow, config).expect("failed to create runtime");
+  let payload = json!({ "count": 42, "enabled": true, "name": "test" });
+  let cancel = CancellationToken::new();
+
+  let result = runtime
+    .invoke(payload, cancel)
+    .await
+    .expect("invoke failed");
+
+  let process_result = &result.node_results["process"];
+  assert_eq!(process_result.output["input"]["count"], 42);
+  assert_eq!(process_result.output["input"]["enabled"], true);
+  assert_eq!(process_result.output["input"]["name"], "test");
+}
+
+#[tokio::test]
+async fn test_type_coercion_failure() {
+  if !component_exists() {
+    eprintln!("Skipping test: test component not built");
+    return;
+  }
+
+  let (config, _temp_dir) = create_test_config();
+
+  let mut nodes = HashMap::new();
+  nodes.insert("trigger".to_string(), create_manual_trigger("trigger"));
+
+  let mut task_inputs = HashMap::new();
+  task_inputs.insert("count".to_string(), "{{ count }}".to_string());
+  task_inputs.insert("enabled".to_string(), "true".to_string());
+  task_inputs.insert("name".to_string(), "test".to_string());
+
+  nodes.insert(
+    "process".to_string(),
+    Node {
+      node_id: "process".to_string(),
+      node_type: NodeType::Component(test_locked_component_with_typed_schema()),
+      inputs: task_inputs,
+      timeout_ms: None,
+      max_retry_attempts: None,
+      fail_workflow: true,
+    },
+  );
+
+  let workflow = Workflow {
+    workflow_id: "coercion-fail-test".to_string(),
+    name: "Coercion Failure Test".to_string(),
+    nodes,
+    edges: vec![("trigger".to_string(), "process".to_string())],
+    timeout_ms: None,
+    max_retry_attempts: None,
+  };
+
+  let runtime = Runtime::new(workflow, config).expect("failed to create runtime");
+  let payload = json!({ "count": "not_a_number" });
+  let cancel = CancellationToken::new();
+
+  let result = runtime.invoke(payload, cancel).await;
+
+  assert!(matches!(result, Err(RuntimeError::InputResolution { .. })));
+  if let Err(RuntimeError::InputResolution { node_id, .. }) = result {
+    assert_eq!(node_id, "process");
+  }
 }
 
 #[tokio::test]
@@ -508,108 +536,109 @@ async fn test_multiple_triggers_rejected() {
 }
 
 #[tokio::test]
-async fn test_schema_type_coercion_success() {
+async fn test_workflow_accessor() {
+  let (config, _temp_dir) = create_test_config();
+  let workflow = create_simple_workflow();
+  let runtime = Runtime::new(workflow, config).expect("failed to create runtime");
+
+  assert_eq!(runtime.workflow().workflow_id, "test-workflow");
+  assert_eq!(runtime.workflow().name, "Test Workflow");
+}
+
+// --- invoke_node tests ---
+
+#[tokio::test]
+async fn test_invoke_node_component() {
   if !component_exists() {
-    eprintln!(
-      "Skipping test: test component not built. Run `cargo component build --release` in test-components/test-task-component"
-    );
+    eprintln!("Skipping test: test component not built");
     return;
   }
 
   let (config, _temp_dir) = create_test_config();
-
-  let mut nodes = HashMap::new();
-  nodes.insert("trigger".to_string(), create_manual_trigger("trigger"));
-
-  let mut task_inputs = HashMap::new();
-  task_inputs.insert("count".to_string(), "{{ count }}".to_string());
-  task_inputs.insert("enabled".to_string(), "{{ enabled }}".to_string());
-  task_inputs.insert("name".to_string(), "{{ name }}".to_string());
-
-  nodes.insert(
-    "process".to_string(),
-    Node {
-      node_id: "process".to_string(),
-      node_type: NodeType::Component(test_locked_component_with_typed_schema()),
-      inputs: task_inputs,
-      timeout_ms: None,
-      max_retry_attempts: None,
-      fail_workflow: true,
-    },
-  );
-
-  let workflow = Workflow {
-    workflow_id: "coercion-test".to_string(),
-    name: "Coercion Test".to_string(),
-    nodes,
-    edges: vec![("trigger".to_string(), "process".to_string())],
-    timeout_ms: None,
-    max_retry_attempts: None,
-  };
-
+  let workflow = create_simple_workflow();
   let runtime = Runtime::new(workflow, config).expect("failed to create runtime");
-  let payload = json!({ "count": 42, "enabled": true, "name": "test" });
+
+  let payload = json!({ "message": "hello from invoke_node" });
   let cancel = CancellationToken::new();
 
   let result = runtime
-    .invoke(payload, cancel)
+    .invoke_node("process", payload, cancel)
     .await
-    .expect("workflow execution failed");
+    .expect("invoke_node failed");
 
-  let process_result = &result.node_results["process"];
-  assert_eq!(process_result.output["input"]["count"], 42);
-  assert_eq!(process_result.output["input"]["enabled"], true);
-  assert_eq!(process_result.output["input"]["name"], "test");
+  assert_eq!(result.node_id, "process");
+  assert_eq!(result.output["input"]["message"], "hello from invoke_node");
 }
 
 #[tokio::test]
-async fn test_schema_type_coercion_failure() {
+async fn test_invoke_node_trigger_no_component() {
+  let (config, _temp_dir) = create_test_config();
+  let workflow = create_simple_workflow();
+  let runtime = Runtime::new(workflow, config).expect("failed to create runtime");
+
+  let payload = json!({ "source": "manual" });
+  let cancel = CancellationToken::new();
+
+  let result = runtime
+    .invoke_node("trigger", payload.clone(), cancel)
+    .await
+    .expect("invoke_node failed");
+
+  assert_eq!(result.node_id, "trigger");
+  // Trigger without component passes through the payload
+  assert_eq!(result.output, payload);
+}
+
+#[tokio::test]
+async fn test_invoke_node_join_errors() {
+  let (config, _temp_dir) = create_test_config();
+  let workflow = create_parallel_workflow();
+  let runtime = Runtime::new(workflow, config).expect("failed to create runtime");
+
+  let payload = json!({});
+  let cancel = CancellationToken::new();
+
+  let result = runtime.invoke_node("join", payload, cancel).await;
+
+  assert!(matches!(result, Err(RuntimeError::InvalidGraph { .. })));
+  if let Err(RuntimeError::InvalidGraph { message }) = result {
+    assert!(message.contains("join"));
+    assert!(message.contains("graph-level"));
+  }
+}
+
+#[tokio::test]
+async fn test_invoke_node_not_found() {
+  let (config, _temp_dir) = create_test_config();
+  let workflow = create_simple_workflow();
+  let runtime = Runtime::new(workflow, config).expect("failed to create runtime");
+
+  let payload = json!({});
+  let cancel = CancellationToken::new();
+
+  let result = runtime.invoke_node("nonexistent", payload, cancel).await;
+
+  assert!(matches!(result, Err(RuntimeError::InvalidGraph { .. })));
+  if let Err(RuntimeError::InvalidGraph { message }) = result {
+    assert!(message.contains("nonexistent"));
+  }
+}
+
+#[tokio::test]
+async fn test_invoke_node_cancellation() {
   if !component_exists() {
-    eprintln!(
-      "Skipping test: test component not built. Run `cargo component build --release` in test-components/test-task-component"
-    );
+    eprintln!("Skipping test: test component not built");
     return;
   }
 
   let (config, _temp_dir) = create_test_config();
-
-  let mut nodes = HashMap::new();
-  nodes.insert("trigger".to_string(), create_manual_trigger("trigger"));
-
-  let mut task_inputs = HashMap::new();
-  task_inputs.insert("count".to_string(), "{{ count }}".to_string());
-  task_inputs.insert("enabled".to_string(), "true".to_string());
-  task_inputs.insert("name".to_string(), "test".to_string());
-
-  nodes.insert(
-    "process".to_string(),
-    Node {
-      node_id: "process".to_string(),
-      node_type: NodeType::Component(test_locked_component_with_typed_schema()),
-      inputs: task_inputs,
-      timeout_ms: None,
-      max_retry_attempts: None,
-      fail_workflow: true,
-    },
-  );
-
-  let workflow = Workflow {
-    workflow_id: "coercion-fail-test".to_string(),
-    name: "Coercion Failure Test".to_string(),
-    nodes,
-    edges: vec![("trigger".to_string(), "process".to_string())],
-    timeout_ms: None,
-    max_retry_attempts: None,
-  };
-
+  let workflow = create_simple_workflow();
   let runtime = Runtime::new(workflow, config).expect("failed to create runtime");
-  let payload = json!({ "count": "not_a_number" });
+
+  let payload = json!({ "message": "test" });
   let cancel = CancellationToken::new();
+  cancel.cancel();
 
-  let result = runtime.invoke(payload, cancel).await;
-
-  assert!(matches!(result, Err(RuntimeError::InputResolution { .. })));
-  if let Err(RuntimeError::InputResolution { node_id, .. }) = result {
-    assert_eq!(node_id, "process");
-  }
+  let result = runtime.invoke_node("process", payload, cancel).await;
+  assert!(matches!(result, Err(RuntimeError::Cancelled)));
 }

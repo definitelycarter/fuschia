@@ -1,4 +1,4 @@
-//! Task executor implementation.
+//! Task component execution.
 
 use std::sync::Arc;
 
@@ -8,10 +8,10 @@ use tracing::{error, info, instrument};
 use wasmtime::Engine;
 use wasmtime::component::Component;
 
-use crate::error::TaskExecutionError;
-use crate::result::TaskResult;
+use crate::error::RuntimeError;
+use crate::result::NodeResult;
 
-/// Input required to execute a task.
+/// Input required to execute a task component.
 pub struct TaskInput {
   /// Unique task ID.
   pub task_id: String,
@@ -27,7 +27,7 @@ pub struct TaskInput {
   pub timeout_ms: Option<u64>,
 }
 
-/// Executes tasks against the wasm runtime.
+/// Executes task wasm components against the wasmtime runtime.
 pub struct TaskExecutor {
   engine: Arc<Engine>,
 }
@@ -38,7 +38,7 @@ impl TaskExecutor {
     Self { engine }
   }
 
-  /// Execute a component task.
+  /// Execute a task wasm component.
   #[instrument(
     name = "task_execute",
     skip(self, component, input, cancel),
@@ -53,7 +53,7 @@ impl TaskExecutor {
     component: &Component,
     input: TaskInput,
     cancel: CancellationToken,
-  ) -> Result<TaskResult, TaskExecutionError> {
+  ) -> Result<NodeResult, RuntimeError> {
     info!(
       input = %input.input,
       resolved_input = %input.resolved_input,
@@ -63,8 +63,8 @@ impl TaskExecutor {
     let result = self.execute_inner(component, &input, cancel).await;
 
     match &result {
-      Ok(task_result) => {
-        info!(output = %task_result.output, "task completed");
+      Ok(node_result) => {
+        info!(output = %node_result.output, "task completed");
       }
       Err(e) => {
         error!(error = %e, "task failed");
@@ -80,9 +80,9 @@ impl TaskExecutor {
     component: &Component,
     input: &TaskInput,
     cancel: CancellationToken,
-  ) -> Result<TaskResult, TaskExecutionError> {
+  ) -> Result<NodeResult, RuntimeError> {
     if cancel.is_cancelled() {
-      return Err(TaskExecutionError::Cancelled);
+      return Err(RuntimeError::Cancelled);
     }
 
     // Create host state and context
@@ -95,7 +95,7 @@ impl TaskExecutor {
 
     // Serialize resolved input for the component
     let input_data = serde_json::to_string(&input.resolved_input).map_err(|e| {
-      TaskExecutionError::InputSerialization {
+      RuntimeError::InputSerialization {
         message: e.to_string(),
       }
     })?;
@@ -113,48 +113,20 @@ impl TaskExecutor {
       epoch_deadline,
     )
     .await
-    .map_err(|e| TaskExecutionError::ComponentExecution { source: e })?;
+    .map_err(|e| RuntimeError::ComponentExecution { source: e })?;
 
     // Parse output data
     let output: serde_json::Value =
-      serde_json::from_str(&result.output.data).map_err(|e| TaskExecutionError::InvalidOutput {
+      serde_json::from_str(&result.output.data).map_err(|e| RuntimeError::InvalidOutput {
         message: format!("invalid JSON: {}", e),
       })?;
 
-    Ok(TaskResult {
+    Ok(NodeResult {
       task_id: input.task_id.clone(),
       node_id: input.node_id.clone(),
       input: input.input.clone(),
       resolved_input: input.resolved_input.clone(),
       output,
     })
-  }
-
-  /// Execute a join task (merges upstream inputs).
-  ///
-  /// Join tasks don't run any wasm - they just pass through the merged input.
-  #[instrument(
-    name = "task_join",
-    skip(self, input),
-    fields(
-      execution_id = %input.execution_id,
-      task_id = %input.task_id,
-      node_id = %input.node_id,
-    )
-  )]
-  pub fn execute_join(&self, input: TaskInput) -> TaskResult {
-    info!(input = %input.input, "join task started");
-
-    let result = TaskResult {
-      task_id: input.task_id,
-      node_id: input.node_id,
-      input: input.input.clone(),
-      resolved_input: input.resolved_input,
-      output: input.input,
-    };
-
-    info!(output = %result.output, "join task completed");
-
-    result
   }
 }

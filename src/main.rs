@@ -7,8 +7,8 @@ use tokio_util::sync::CancellationToken;
 
 use fuschia_component_registry::FsComponentRegistry;
 use fuschia_config::WorkflowDef;
-use fuschia_engine::{ExecutorConfig, WorkflowExecutor};
 use fuschia_resolver::{Resolver, StandardResolver};
+use fuschia_runtime::{Runtime, RuntimeConfig};
 
 /// Fuschia - A workflow engine built on WebAssembly components
 #[derive(Parser)]
@@ -40,8 +40,8 @@ enum RunTarget {
     workflow_file: PathBuf,
   },
 
-  /// Run a single task from a workflow
-  Task {
+  /// Run a single node from a workflow
+  Node {
     /// Path to the workflow file (JSON or YAML)
     workflow_file: PathBuf,
 
@@ -65,11 +65,11 @@ fn main() -> Result<()> {
       RunTarget::Workflow { workflow_file } => {
         run_workflow(workflow_file, data_dir)?;
       }
-      RunTarget::Task {
+      RunTarget::Node {
         workflow_file,
         node,
       } => {
-        run_task(workflow_file, node, data_dir)?;
+        run_node(workflow_file, node, data_dir)?;
       }
     },
     None => {
@@ -86,7 +86,6 @@ fn run_workflow(workflow_file: PathBuf, data_dir: PathBuf) -> Result<()> {
 }
 
 async fn run_workflow_async(workflow_file: PathBuf, data_dir: PathBuf) -> Result<()> {
-  // Read workflow definition
   let workflow_content = tokio::fs::read_to_string(&workflow_file)
     .await
     .with_context(|| format!("failed to read workflow file: {}", workflow_file.display()))?;
@@ -96,15 +95,12 @@ async fn run_workflow_async(workflow_file: PathBuf, data_dir: PathBuf) -> Result
 
   eprintln!("Loaded workflow: {}", workflow_def.name);
 
-  // Read payload from stdin
   let payload = read_payload_from_stdin()?;
   eprintln!("Payload: {}", payload);
 
-  // Set up component registry
   let components_dir = data_dir.join("components");
   let registry = FsComponentRegistry::new(&components_dir);
 
-  // Resolve workflow
   let resolver = StandardResolver::new(registry);
   let workflow = resolver
     .resolve(workflow_def)
@@ -113,25 +109,22 @@ async fn run_workflow_async(workflow_file: PathBuf, data_dir: PathBuf) -> Result
 
   eprintln!("Resolved workflow with {} nodes", workflow.nodes.len());
 
-  // Create executor
-  let config = ExecutorConfig {
+  let config = RuntimeConfig {
     component_base_path: components_dir,
   };
-  let executor = WorkflowExecutor::new(config).context("failed to create workflow executor")?;
+  let runtime = Runtime::new(workflow, config).context("failed to create runtime")?;
 
-  // Execute workflow
   let cancel = CancellationToken::new();
-  let result = executor
-    .execute(&workflow, payload, cancel)
+  let result = runtime
+    .invoke(payload, cancel)
     .await
     .context("workflow execution failed")?;
 
   eprintln!("Execution completed: {}", result.execution_id);
-  eprintln!("Tasks executed: {}", result.task_results.len());
+  eprintln!("Nodes executed: {}", result.node_results.len());
 
-  // Print results as JSON
   let output: serde_json::Map<String, serde_json::Value> = result
-    .task_results
+    .node_results
     .into_iter()
     .map(|(id, r)| (id, r.output))
     .collect();
@@ -141,13 +134,12 @@ async fn run_workflow_async(workflow_file: PathBuf, data_dir: PathBuf) -> Result
   Ok(())
 }
 
-fn run_task(workflow_file: PathBuf, node: String, data_dir: PathBuf) -> Result<()> {
+fn run_node(workflow_file: PathBuf, node: String, data_dir: PathBuf) -> Result<()> {
   let rt = tokio::runtime::Runtime::new()?;
-  rt.block_on(async { run_task_async(workflow_file, node, data_dir).await })
+  rt.block_on(async { run_node_async(workflow_file, node, data_dir).await })
 }
 
-async fn run_task_async(workflow_file: PathBuf, node_id: String, data_dir: PathBuf) -> Result<()> {
-  // Read workflow definition
+async fn run_node_async(workflow_file: PathBuf, node_id: String, data_dir: PathBuf) -> Result<()> {
   let workflow_content = tokio::fs::read_to_string(&workflow_file)
     .await
     .with_context(|| format!("failed to read workflow file: {}", workflow_file.display()))?;
@@ -155,53 +147,44 @@ async fn run_task_async(workflow_file: PathBuf, node_id: String, data_dir: PathB
   let workflow_def: WorkflowDef = serde_json::from_str(&workflow_content)
     .with_context(|| format!("failed to parse workflow file: {}", workflow_file.display()))?;
 
-  // Find the node in the workflow
-  let node_def = workflow_def
-    .nodes
-    .iter()
-    .find(|n| n.node_id == node_id)
-    .with_context(|| format!("node '{}' not found in workflow", node_id))?;
+  eprintln!("Running node: {}", node_id);
 
-  eprintln!("Running node: {} (type: {:?})", node_id, node_def.node_type);
-
-  // Read payload from stdin
   let payload = read_payload_from_stdin()?;
   eprintln!("Payload: {}", payload);
 
-  // Set up component registry
   let components_dir = data_dir.join("components");
   let registry = FsComponentRegistry::new(&components_dir);
 
-  // Resolve workflow
   let resolver = StandardResolver::new(registry);
   let workflow = resolver
     .resolve(workflow_def)
     .await
     .context("failed to resolve workflow")?;
 
-  // Find the resolved node
-  let resolved_node = workflow
-    .nodes
-    .get(&node_id)
-    .with_context(|| format!("resolved node '{}' not found", node_id))?;
+  let config = RuntimeConfig {
+    component_base_path: components_dir,
+  };
+  let runtime = Runtime::new(workflow, config).context("failed to create runtime")?;
 
-  // TODO: Re-implement execute_node on WorkflowExecutor
-  // For now, we don't support running individual nodes
-  anyhow::bail!(
-    "Running individual nodes is not yet supported. Node '{}' of type {:?} cannot be executed directly.",
-    resolved_node.node_id,
-    resolved_node.node_type
-  );
+  let cancel = CancellationToken::new();
+  let result = runtime
+    .invoke_node(&node_id, payload, cancel)
+    .await
+    .context("node execution failed")?;
+
+  eprintln!("Node '{}' completed", result.node_id);
+
+  println!("{}", serde_json::to_string_pretty(&result.output)?);
+
+  Ok(())
 }
 
 fn read_payload_from_stdin() -> Result<serde_json::Value> {
   use std::io::IsTerminal;
 
   if io::stdin().is_terminal() {
-    // No stdin pipe, use empty object
     Ok(serde_json::json!({}))
   } else {
-    // Read from stdin
     let mut input = String::new();
     io::stdin()
       .read_to_string(&mut input)

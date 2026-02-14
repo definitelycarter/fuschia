@@ -10,7 +10,7 @@ use std::sync::RwLock;
 use wasmtime::Engine;
 use wasmtime::component::Component;
 
-use crate::error::ExecutionError;
+use crate::error::RuntimeError;
 
 /// Cache key for compiled components.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -46,15 +46,12 @@ impl ComponentCache {
     engine: &Engine,
     key: &ComponentKey,
     wasm_path: &Path,
-  ) -> Result<Component, ExecutionError> {
+  ) -> Result<Component, RuntimeError> {
     // Try read lock first
     {
-      let cache = self
-        .cache
-        .read()
-        .map_err(|e| ExecutionError::InvalidGraph {
-          message: format!("component cache lock poisoned: {}", e),
-        })?;
+      let cache = self.cache.read().map_err(|e| RuntimeError::InvalidGraph {
+        message: format!("component cache lock poisoned: {}", e),
+      })?;
       if let Some(component) = cache.get(key) {
         return Ok(component.clone());
       }
@@ -62,18 +59,15 @@ impl ComponentCache {
 
     // Compile and insert with write lock
     let component =
-      Component::from_file(engine, wasm_path).map_err(|e| ExecutionError::ComponentLoad {
+      Component::from_file(engine, wasm_path).map_err(|e| RuntimeError::ComponentLoad {
         node_id: key.name.clone(),
         message: e.to_string(),
       })?;
 
     {
-      let mut cache = self
-        .cache
-        .write()
-        .map_err(|e| ExecutionError::InvalidGraph {
-          message: format!("component cache lock poisoned: {}", e),
-        })?;
+      let mut cache = self.cache.write().map_err(|e| RuntimeError::InvalidGraph {
+        message: format!("component cache lock poisoned: {}", e),
+      })?;
       cache.insert(key.clone(), component.clone());
     }
 
