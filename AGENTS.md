@@ -6,7 +6,6 @@ Fuschia is a workflow engine similar to n8n, built on WebAssembly components usi
 
 - [docs/DESIGN.md](./docs/DESIGN.md) - Architecture and design decisions
 - [docs/USE_CASES.md](./docs/USE_CASES.md) - Example workflows with diagrams and JSON definitions
-- [apps/desktop/DESIGN.md](./apps/desktop/DESIGN.md) - Desktop app design and theme
 - [TODO.md](./TODO.md) - Outstanding crates and features
 
 ## Project Structure
@@ -15,7 +14,6 @@ Fuschia is a workflow engine similar to n8n, built on WebAssembly components usi
 - `crates/` - Workspace member crates
   - `fuschia-config` - Serializable workflow configuration types (workflow definitions, nodes, edges). Represents workflows before they are loaded and resolved by the engine. Can be deserialized from JSON files or database storage.
   - `fuschia-artifact` - Artifact storage trait and implementations. Provides async streaming interface for storing/retrieving binary artifacts. Includes `FsStore` for local filesystem storage.
-  - `fuschia-store` - Workflow execution and task storage trait and implementations. Stores execution state, task records, and snapshots of workflow configs. Includes `SqliteStore` implementation.
   - `fuschia-workflow` - Locked/resolved workflow representation. Validated graph structure with components referenced by name, version, and digest. Ready for execution. Includes graph traversal utilities.
   - `fuschia-component-registry` - Component registry system. Manages installed Wasm components with manifests containing name, version, description, digest, capabilities (allowed_hosts, allowed_paths), and HashMaps of exported tasks and triggers. Components are stored in `~/.fuschia/components/` with a npm-like directory structure.
   - `fuschia-resolver` - Transforms `WorkflowDef` (config) into `Workflow` (locked). Validates graph is a DAG (no cycles), resolves component references via the registry, and handles recursive loop node resolution.
@@ -37,7 +35,6 @@ Fuschia is a workflow engine similar to n8n, built on WebAssembly components usi
     - `fuschia-log/log.wit` - Logging interface that routes to OpenTelemetry on the host
     - `wasi_http@0.2.0.wit` - WASI HTTP types and outgoing handler
     - `wasi_io@0.2.0.wit`, `wasi_clocks@0.2.0.wit`, etc. - WASI dependencies
-- `migrations/` - SQLite database migrations (sqlx)
 - `docs/` - Design documentation
 
 ## Development

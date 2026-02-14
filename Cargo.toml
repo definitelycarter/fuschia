@@ -22,7 +22,6 @@ members = [
   "crates/fuschia-host",
   "crates/fuschia-resolver",
   "crates/fuschia-runtime",
-  "crates/fuschia-store",
   "crates/fuschia-task",
   "crates/fuschia-task-host",
   "crates/fuschia-trigger",

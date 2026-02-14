@@ -6,7 +6,6 @@
 |-------|-------------|--------|
 | `fuschia-config` | Serializable workflow configuration (JSON/YAML) | Done |
 | `fuschia-artifact` | Artifact storage trait + FsStore implementation | Done |
-| `fuschia-store` | Workflow execution/task storage trait + SqliteStore | Done |
 | `fuschia-workflow` | Locked/resolved workflow with graph traversal | Done |
 | `fuschia-component-registry` | Component manifest, registry trait, FsComponentRegistry. Components can export multiple tasks and triggers. | Done |
 | `fuschia-resolver` | Convert `WorkflowDef` (config) → `Workflow` (locked), validate graph | Done |
@@ -81,7 +80,6 @@
 | Retry logic | Retry failed nodes per policy | Needs `fuschia-runtime` enhancement |
 | Observability | OpenTelemetry tracing to Jaeger | Needs integration across crates |
 | Component packaging | Bundle manifest + wasm + readme + assets into .fcpkg | Needs `fuschia-cli` |
-| Store integration | Persist execution records to fuschia-store | Needs `fuschia-engine` enhancement |
 
 ## Gaps - Existing Crates
 
@@ -122,13 +120,6 @@
 |-----|-------------|----------|
 | Content-type not persisted | `FsStore` accepts `content_type` but doesn't store it anywhere | Medium |
 
-### fuschia-store
-
-| Gap | Description | Priority |
-|-----|-------------|----------|
-| Missing artifacts table | No database table to track artifact metadata (id, execution_id, node_id, content_type) | High |
-| Missing artifact refs in Task | `Task` type has no field to store artifact references produced by the node | High |
-| Incomplete ExecutionStatus | Missing `Cancelled`, `Paused`, `TimedOut` states | Low |
 
 ## Design Decisions
 
@@ -278,7 +269,6 @@ enum RuntimeError {
 | Graph method return types | Should `downstream()`/`upstream()` return `Option<&[String]>` instead of `&[]`? |
 | Loop item injection | How does `{ "item": {...}, "index": 0 }` get passed to nested workflow inputs? |
 | Join node output shape | What's the output - aggregated map of branch outputs? Pass-through? |
-| WorkflowExecution.config type | Should store original `WorkflowDef` or locked `Workflow` for audit trail? |
 | KV store value types | Should kv.wit support complex types (json, number, bool, object) or just strings? |
 | WorkflowRunner naming | Current name may be confusing - reconsider naming |
 | Distributed execution model | `fuschia start` daemon mode for production: init container pulls components at deploy time, pods wait for messages from broker. Each workflow node gets pre-warmed pods. Message format: `{execution_id, task_id, input}`. Orchestrator resolves templates, workers just execute. |
