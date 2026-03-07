@@ -30,6 +30,16 @@ pub enum RetryBackoff {
   Exponential,
 }
 
+/// The runtime backend a component targets.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RuntimeType {
+    #[default]
+    Wasm,
+    Lua,
+    Js,
+}
+
 /// The type of trigger and its configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "trigger_type", rename_all = "snake_case")]

@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use fuschia_component_registry::{ComponentRegistry, InstalledComponent};
 use fuschia_config::{NodeDef, NodeType as ConfigNodeType, WorkflowDef};
 use fuschia_workflow::{
-  LockedComponent, LockedLoop, LockedTrigger, LockedTriggerComponent, Node, NodeType, Workflow,
+  LockedComponent, LockedLoop, LockedTrigger, Node, NodeType, Workflow,
 };
 
 use crate::error::ResolveError;
@@ -138,12 +138,13 @@ impl<R: ComponentRegistry> StandardResolver<R> {
                     trigger_name: tc.trigger_name.clone(),
                   })?;
 
-                Some(LockedTriggerComponent {
+                Some(LockedComponent {
                   name: installed.manifest.name,
                   version: installed.manifest.version,
                   digest: installed.manifest.digest,
-                  trigger_name: tc.trigger_name,
+                  task_name: tc.trigger_name,
                   input_schema: trigger_export.schema.clone(),
+                  runtime_type: Default::default(),
                 })
               }
               None => None,
@@ -176,6 +177,7 @@ impl<R: ComponentRegistry> StandardResolver<R> {
               digest: installed.manifest.digest,
               task_name,
               input_schema: task_export.schema.clone(),
+              runtime_type: Default::default(),
             })
           }
           ConfigNodeType::Join { join_strategy } => NodeType::Join {

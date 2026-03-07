@@ -18,15 +18,16 @@ members = [
   "crates/fuschia-artifact",
   "crates/fuschia-component-registry",
   "crates/fuschia-config",
-  "crates/fuschia-engine",
-  "crates/fuschia-host",
+  "crates/fuschia-host-config",
+  "crates/fuschia-host-http",
+  "crates/fuschia-host-kv",
+  "crates/fuschia-host-log",
   "crates/fuschia-resolver",
-  "crates/fuschia-runtime",
-  "crates/fuschia-task",
-  "crates/fuschia-task-host",
-  "crates/fuschia-trigger",
-  "crates/fuschia-trigger-host",
+  "crates/fuschia-task-runtime",
+  "crates/fuschia-task-runtime-lua",
+  "crates/fuschia-task-runtime-wasm",
   "crates/fuschia-workflow",
+  "crates/fuschia-workflow-orchestrator",
   "crates/fuschia-world",
 ]
 
@@ -41,4 +42,6 @@ anyhow = "1"
 fuschia-config = { path = "crates/fuschia-config" }
 fuschia-component-registry = { path = "crates/fuschia-component-registry" }
 fuschia-resolver = { path = "crates/fuschia-resolver" }
-fuschia-runtime = { path = "crates/fuschia-runtime" }
+fuschia-workflow-orchestrator = { path = "crates/fuschia-workflow-orchestrator" }
+fuschia-task-runtime = { path = "crates/fuschia-task-runtime", features = ["wasm"] }
+fuschia-task-runtime-wasm = { path = "crates/fuschia-task-runtime-wasm" }

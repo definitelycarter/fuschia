@@ -1,5 +1,6 @@
 use std::io::{self, Read};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -8,7 +9,9 @@ use tokio_util::sync::CancellationToken;
 use fuschia_component_registry::FsComponentRegistry;
 use fuschia_config::WorkflowDef;
 use fuschia_resolver::{Resolver, StandardResolver};
-use fuschia_runtime::{Runtime, RuntimeConfig};
+use fuschia_task_runtime::{RuntimeRegistry, RuntimeType};
+use fuschia_task_runtime_wasm::WasmExecutor;
+use fuschia_workflow_orchestrator::{Orchestrator, OrchestratorConfig};
 
 /// Fuschia - A workflow engine built on WebAssembly components
 #[derive(Parser)]
@@ -109,13 +112,20 @@ async fn run_workflow_async(workflow_file: PathBuf, data_dir: PathBuf) -> Result
 
   eprintln!("Resolved workflow with {} nodes", workflow.nodes.len());
 
-  let config = RuntimeConfig {
-    component_base_path: components_dir,
-  };
-  let runtime = Runtime::new(workflow, config).context("failed to create runtime")?;
+  let mut runtime_registry = RuntimeRegistry::new();
+  runtime_registry.register(RuntimeType::Wasm, Arc::new(WasmExecutor::new(Default::default()).expect("failed to create wasm executor")));
+
+  let component_registry = Arc::new(FsComponentRegistry::new(&components_dir));
+  let orchestrator = Orchestrator::new(
+    workflow,
+    Arc::new(runtime_registry),
+    component_registry,
+    OrchestratorConfig::default(),
+  )
+  .context("failed to create orchestrator")?;
 
   let cancel = CancellationToken::new();
-  let result = runtime
+  let result = orchestrator
     .invoke(payload, cancel)
     .await
     .context("workflow execution failed")?;
@@ -161,13 +171,20 @@ async fn run_node_async(workflow_file: PathBuf, node_id: String, data_dir: PathB
     .await
     .context("failed to resolve workflow")?;
 
-  let config = RuntimeConfig {
-    component_base_path: components_dir,
-  };
-  let runtime = Runtime::new(workflow, config).context("failed to create runtime")?;
+  let mut runtime_registry = RuntimeRegistry::new();
+  runtime_registry.register(RuntimeType::Wasm, Arc::new(WasmExecutor::new(Default::default()).expect("failed to create wasm executor")));
+
+  let component_registry = Arc::new(FsComponentRegistry::new(&components_dir));
+  let orchestrator = Orchestrator::new(
+    workflow,
+    Arc::new(runtime_registry),
+    component_registry,
+    OrchestratorConfig::default(),
+  )
+  .context("failed to create orchestrator")?;
 
   let cancel = CancellationToken::new();
-  let result = runtime
+  let result = orchestrator
     .invoke_node(&node_id, payload, cancel)
     .await
     .context("node execution failed")?;

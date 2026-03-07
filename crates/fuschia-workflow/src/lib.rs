@@ -17,7 +17,5 @@ mod workflow;
 
 pub use error::WorkflowError;
 pub use graph::Graph;
-pub use node::{
-  LockedComponent, LockedLoop, LockedTrigger, LockedTriggerComponent, Node, NodeType,
-};
+pub use node::{LockedComponent, LockedLoop, LockedTrigger, Node, NodeType};
 pub use workflow::Workflow;

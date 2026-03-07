@@ -2,6 +2,17 @@
 
 A workflow engine built on WebAssembly components.
 
+## Features
+
+- **Multi-runtime** — Write components in WebAssembly or Lua. Same execution model, same host capabilities, your choice of language.
+- **Sandboxed execution** — Components run in isolated VMs with no access to the host filesystem, network, or environment unless explicitly granted through capability policies.
+- **Parallel scheduling** — Independent branches execute concurrently as tokio tasks. Parallelism emerges from graph structure automatically.
+- **Unified trigger model** — Triggers and tasks share the same `execute(ctx, data)` interface and run through the same runtime registry. Triggers can validate, enrich, or reject incoming payloads.
+- **Host capabilities** — Components access KV storage, configuration, logging, and HTTP through a shared capability layer. No capability logic is duplicated across runtimes.
+- **Input templating** — Node inputs use Jinja2-style templates (`{{ upstream.field | upper }}`) with type coercion from schemas.
+- **Component registry** — Install, version, and resolve components from a local registry. Components declare their capabilities, exported tasks, and triggers in a manifest.
+- **Cancellation** — Workflow-level cancellation propagates to all running nodes via `CancellationToken`.
+
 ## Quick Start
 
 ### Run a workflow

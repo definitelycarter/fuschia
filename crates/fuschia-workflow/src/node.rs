@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use fuschia_config::{ExecutionMode, InputValue, JoinStrategy, LoopFailureMode, TriggerType};
+use fuschia_config::{
+    ExecutionMode, InputValue, JoinStrategy, LoopFailureMode, RuntimeType, TriggerType,
+};
 use serde::{Deserialize, Serialize};
 
 /// A resolved node in a locked workflow.
@@ -37,26 +39,9 @@ pub struct LockedTrigger {
   /// Optional component for custom trigger processing.
   /// None for basic built-in triggers (manual, simple webhook/poll).
   /// Some for component-authored triggers with validation/transformation logic.
-  pub component: Option<LockedTriggerComponent>,
-}
-
-/// A locked trigger component with its export name.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LockedTriggerComponent {
-  /// Component name (e.g., "my-org/google-sheets")
-  pub name: String,
-
-  /// Component version (e.g., "1.0.0")
-  pub version: String,
-
-  /// SHA-256 digest of the wasm binary (for verification)
-  pub digest: String,
-
-  /// Name of the trigger export within the component (e.g., "row-added")
-  pub trigger_name: String,
-
-  /// JSON Schema for the trigger's input (copied from manifest at lock time)
-  pub input_schema: serde_json::Value,
+  /// Uses the same `LockedComponent` as task nodes — the `task_name` field
+  /// names the trigger export within the component.
+  pub component: Option<LockedComponent>,
 }
 
 /// A locked task component that has been resolved.
@@ -76,6 +61,10 @@ pub struct LockedComponent {
 
   /// JSON Schema for the task's input (copied from manifest at lock time)
   pub input_schema: serde_json::Value,
+
+  /// The runtime backend this component targets.
+  #[serde(default)]
+  pub runtime_type: RuntimeType,
 }
 
 /// A loop node with its nested workflow.
