@@ -15,10 +15,3 @@ world task-component {
   include platform;
   export fuschia:task/task@0.1.0;
 }
-
-/// World for trigger components.
-/// Triggers initiate workflow execution based on events.
-world trigger-component {
-  include platform;
-  export fuschia:trigger/trigger@0.1.0;
-}
