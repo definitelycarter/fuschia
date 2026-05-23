@@ -1,52 +1,14 @@
-[package]
-name = "fuchsia"
-edition.workspace = true
-version.workspace = true
-
-[[bin]]
-name = "fuchsia"
-path = "src/main.rs"
-
 [workspace]
+resolver = "2"
 package.edition = "2024"
 package.version = "0.0.1-alpha.0"
 exclude = [
-  "test-components/test-task-component",
   "test-components/test-actor-component",
 ]
 members = [
   "crates/fuchsia-actor",
   "crates/fuchsia-actor-lua",
   "crates/fuchsia-actor-wasm",
-  "crates/fuchsia-artifact",
   "crates/fuchsia-capabilities",
   "crates/fuchsia-runtime",
-  "crates/fuchsia-component-registry",
-  "crates/fuchsia-config",
-  "crates/fuchsia-host-config",
-  "crates/fuchsia-host-http",
-  "crates/fuchsia-host-kv",
-  "crates/fuchsia-host-log",
-  "crates/fuchsia-resolver",
-  "crates/fuchsia-task-runtime",
-  "crates/fuchsia-task-runtime-lua",
-  "crates/fuchsia-task-runtime-wasm",
-  "crates/fuchsia-workflow",
-  "crates/fuchsia-workflow-orchestrator",
-  "crates/fuchsia-world",
 ]
-
-[dependencies]
-clap = { version = "4", features = ["derive"] }
-dirs = "6"
-tokio = { version = "1", features = ["full"] }
-tokio-util = "0.7"
-serde_json = "1"
-anyhow = "1"
-
-fuchsia-config = { path = "crates/fuchsia-config" }
-fuchsia-component-registry = { path = "crates/fuchsia-component-registry" }
-fuchsia-resolver = { path = "crates/fuchsia-resolver" }
-fuchsia-workflow-orchestrator = { path = "crates/fuchsia-workflow-orchestrator" }
-fuchsia-task-runtime = { path = "crates/fuchsia-task-runtime", features = ["wasm"] }
-fuchsia-task-runtime-wasm = { path = "crates/fuchsia-task-runtime-wasm" }

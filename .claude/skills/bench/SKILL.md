@@ -35,11 +35,9 @@ Use this to pick which benches to run for a given change. **Widen when uncertain
 
 Not yet covered (consider adding harnesses when these areas change materially):
 
-- `crates/fuchsia-workflow-orchestrator/` — graph traversal, scheduling, input resolution (minijinja), type coercion (legacy task runtime, slated for replacement)
-- `crates/fuchsia-task-runtime-wasm/` — wasm component instantiation, epoch-based timeout overhead, component caching (legacy)
-- `crates/fuchsia-task-runtime-lua/` — Lua executor invocation cost (legacy)
-- `crates/fuchsia-resolver/` — `WorkflowDef` → `Workflow` resolution, DAG validation, loop node recursion
-- `crates/fuchsia-component-registry/` — manifest load, digest verification
+- `crates/fuchsia-actor-wasm/` — wasm component instantiation, per-message Store creation, host import dispatch
+- `crates/fuchsia-actor-lua/` — Lua VM creation + script load per message
+- `crates/fuchsia-capabilities/` — HTTP client overhead (depends on real network, harder to bench reliably)
 
 When you add a bench, add a row above mapping the source area to the harness name.
 

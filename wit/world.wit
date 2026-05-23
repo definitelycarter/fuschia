@@ -1,19 +1,5 @@
 package fuchsia:platform@0.1.0;
 
-/// Legacy world used by `fuchsia-task-runtime-wasm`. Slated for removal once
-/// the actor-based runtime supersedes the task runtime.
-world platform {
-  import fuchsia:kv/kv@0.1.0;
-  import fuchsia:config/config@0.1.0;
-  import fuchsia:log/log@0.1.0;
-}
-
-/// Legacy world for task components, paired with the `platform` world.
-world task-component {
-  include platform;
-  export fuchsia:task/task@0.1.0;
-}
-
 /// Platform imports for the actor world. Universal capabilities only —
 /// hosts that want additional capabilities (MQTT, BLE, etc.) define their
 /// own world that extends this one.
