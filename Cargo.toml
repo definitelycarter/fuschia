@@ -14,7 +14,9 @@ exclude = [
   "test-components/test-task-component",
 ]
 members = [
+  "crates/fuchsia-actor",
   "crates/fuchsia-artifact",
+  "crates/fuchsia-runtime",
   "crates/fuchsia-component-registry",
   "crates/fuchsia-config",
   "crates/fuchsia-host-config",

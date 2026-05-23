@@ -7,13 +7,14 @@ description: Use when running, adding, or interpreting benchmarks in this repo. 
 
 We benchmark with **criterion**, targeted before/after by default: capture the affected benches on `main`, make the change, capture them again, compare. Always running the full suite is too slow to be a habit.
 
-> **Status (2026-05-23):** the repo has zero bench harnesses today. Sections 1 and 2 are stubs that get filled in as harnesses land — keep them current when you add one. The "Adding a new benchmark" section is the live one until then.
+> **Status (2026-05-23):** initial bench coverage for the actor runtime has landed. Sections 1 and 2 are now populated — keep them current as more harnesses are added.
 
 ## 1. What benches exist
 
 | Crate | Bench harness | What it measures |
 |-------|---------------|------------------|
-| _none yet_ | | |
+| `fuchsia-runtime` | `chain_throughput` | End-to-end throughput pushing 1k messages through a linear chain of K passthrough actors (K = 1, 4, 16). Includes spawn + teardown. |
+| `fuchsia-runtime` | `fan_out` | End-to-end throughput pushing 1k messages through one passthrough that fans out to W sinks (W = 2, 8, 32). Throughput is per input message; divide by W for per-edge cost. |
 
 Run a single harness once they exist:
 
@@ -25,15 +26,22 @@ cargo bench -p <crate> --bench <name>
 
 Use this to pick which benches to run for a given change. **Widen when uncertain** — running an extra bench is cheaper than missing a regression.
 
-Empty until harnesses exist. As benches are added, populate rows here keyed to source areas. Likely first candidates, based on the current architecture, are:
+| Source area | Run these benches |
+|-------------|-------------------|
+| `crates/fuchsia-actor/src/channel.rs` | `fuchsia-runtime::chain_throughput`, `fuchsia-runtime::fan_out` |
+| `crates/fuchsia-actor/src/actor.rs` (trait shape, `async-trait` boxing) | `fuchsia-runtime::chain_throughput` |
+| `crates/fuchsia-runtime/src/orchestrator.rs` | `fuchsia-runtime::chain_throughput`, `fuchsia-runtime::fan_out` |
+| `crates/fuchsia-runtime/src/registry.rs` (instantiate path) | `fuchsia-runtime::chain_throughput` |
 
-- `crates/fuchsia-workflow-orchestrator/` — graph traversal, scheduling, input resolution (minijinja), type coercion
-- `crates/fuchsia-task-runtime-wasm/` — wasm component instantiation, epoch-based timeout overhead, component caching
-- `crates/fuchsia-task-runtime-lua/` — Lua executor invocation cost
+Not yet covered (consider adding harnesses when these areas change materially):
+
+- `crates/fuchsia-workflow-orchestrator/` — graph traversal, scheduling, input resolution (minijinja), type coercion (legacy task runtime, slated for replacement)
+- `crates/fuchsia-task-runtime-wasm/` — wasm component instantiation, epoch-based timeout overhead, component caching (legacy)
+- `crates/fuchsia-task-runtime-lua/` — Lua executor invocation cost (legacy)
 - `crates/fuchsia-resolver/` — `WorkflowDef` → `Workflow` resolution, DAG validation, loop node recursion
 - `crates/fuchsia-component-registry/` — manifest load, digest verification
 
-When you add a bench, add a row here mapping the source area to the harness name.
+When you add a bench, add a row above mapping the source area to the harness name.
 
 ## 3. The before/after workflow
 
