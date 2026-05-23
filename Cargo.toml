@@ -16,6 +16,7 @@ exclude = [
 ]
 members = [
   "crates/fuchsia-actor",
+  "crates/fuchsia-actor-lua",
   "crates/fuchsia-actor-wasm",
   "crates/fuchsia-artifact",
   "crates/fuchsia-capabilities",

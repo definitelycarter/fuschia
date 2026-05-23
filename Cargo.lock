@@ -871,6 +871,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuchsia-actor-lua"
+version = "0.0.1-alpha.0"
+dependencies = [
+ "async-trait",
+ "fuchsia-actor",
+ "fuchsia-capabilities",
+ "fuchsia-runtime",
+ "futures",
+ "mlua",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "fuchsia-actor-wasm"
 version = "0.0.1-alpha.0"
 dependencies = [
