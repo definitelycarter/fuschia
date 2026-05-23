@@ -1,10 +1,12 @@
 # WebAssembly Actors
 
 `fuchsia-actor-wasm` hosts WebAssembly components as Fuchsia actors. Each
-`WasmActor` wraps a compiled wasm component; per inbound message it
-creates a fresh `wasmtime::Store`, instantiates the component into it,
-calls the component's exported `task.execute(ctx, data)`, and emits the
-result.
+`WasmActor` wraps a compiled wasm component. When the actor starts, the
+runtime builds one `wasmtime::Store`, instantiates the component into it,
+and drives the component's lifecycle: `setup` once, `handle` per inbound
+message, `teardown` once on shutdown. The store persists for the actor's
+lifetime — connections, subscriptions, and capability handles opened in
+`setup` stay live across every `handle` call.
 
 ## Anatomy
 
@@ -19,8 +21,9 @@ pub struct WasmActor<H: WasmHost> {
 ```
 
 `WasmActor: Clone` is cheap — every field is either `Arc`-backed
-internally or wrapped in `Arc`. That matters because the
-`ActorRegistry` factory closure clones the actor for each node.
+internally or wrapped in `Arc`. Each clone produces an independent actor
+that builds its own store when started, so the `ActorRegistry` factory
+closure can hand back fresh actors per registered node.
 
 ## Builder
 
@@ -57,51 +60,61 @@ let engine = wasmtime::Engine::new(&config)?;
 ```
 
 `build()` does the expensive setup *once* — compiles the component if
-needed, then constructs the `Linker` against the host's
-`add_to_linker`. Per-message dispatch reuses this `Linker` for every
-instantiation, so the wiring cost is paid up-front, not per call.
+needed, then constructs the `Linker` against the host's `add_to_linker`.
+At actor startup the linker is reused; the cost of wiring imports is paid
+up-front, not per actor.
 
 ## The contract
 
 Components built against the canonical `actor-component` world export the
-`fuchsia:task/task` interface:
+`fuchsia:actor/actor` interface and import `fuchsia:actor/emit`:
 
 ```wit
-interface task {
+interface actor {
   record context {
     execution-id: string,
     node-id: string,
     task-id: string,
   }
 
-  record output {
-    data: string,
-  }
+  setup:    func(ctx: context) -> result<_, string>;
+  handle:   func(ctx: context, message: string) -> result<_, string>;
+  teardown: func(ctx: context) -> result<_, string>;
+}
 
-  execute: func(ctx: context, data: string) -> result<output, string>;
+interface emit {
+  send: func(data: string) -> result<_, string>;
 }
 ```
 
-Inputs and outputs are JSON-serialized strings — the actor handles the
-marshalling. Components built with `wit-bindgen` (e.g., via
-`cargo-component`) end up writing something like:
+All three lifecycle exports are required. Stateless components implement
+`setup` and `teardown` as no-ops returning `Ok(())`. Inbound messages are
+JSON-encoded strings; the actor handles marshalling. Outbound emissions
+flow through the host-imported `emit.send`, not through `handle`'s return
+value — `handle` returns `Ok(())` once it's done processing.
+
+A component built with `wit-bindgen` (e.g., via `cargo-component`) ends up
+writing something like:
 
 ```rust
-impl exports::fuchsia::task::task::Guest for MyComponent {
-  fn execute(
-    ctx: exports::fuchsia::task::task::Context,
-    data: String,
-  ) -> Result<exports::fuchsia::task::task::Output, String> {
-    fuchsia::log::log::log(
-      fuchsia::log::log::Level::Info,
-      &format!("executing in node {}", ctx.node_id),
-    );
+impl exports::fuchsia::actor::actor::Guest for MyComponent {
+  fn setup(ctx: exports::fuchsia::actor::actor::Context) -> Result<(), String> {
+    fuchsia::log::log::log(fuchsia::log::log::Level::Info,
+      &format!("setup node {}", ctx.node_id));
+    Ok(())
+  }
 
-    // ... do work on `data` (parse JSON, transform, etc.) ...
+  fn handle(
+    ctx: exports::fuchsia::actor::actor::Context,
+    message: String,
+  ) -> Result<(), String> {
+    // ... do work on `message` (parse JSON, transform, etc.) ...
+    let output = serde_json::to_string(&result).unwrap();
+    fuchsia::actor::emit::send(&output)
+  }
 
-    Ok(exports::fuchsia::task::task::Output {
-      data: serde_json::to_string(&result).unwrap(),
-    })
+  fn teardown(_ctx: exports::fuchsia::actor::actor::Context) -> Result<(), String> {
+    Ok(())
   }
 }
 ```
@@ -109,21 +122,36 @@ impl exports::fuchsia::task::task::Guest for MyComponent {
 The `actor-component` world also imports `fuchsia:log/log` and
 `fuchsia:http/outbound`, both of which `DefaultHost` provides.
 
-## Per-message lifecycle
+## Actor lifecycle
 
-For each message that arrives on the actor's inbox:
+When the orchestrator spawns the actor:
 
-1. `Store<H::State>` is created fresh via `host.fresh_state()`.
+1. `Store<H::State>` is created via `host.initial_state(emitter)`. The
+   `Emitter` is stashed in the state so the `emit` import callback can
+   reach it.
 2. The component is instantiated into the store via the pre-built
-   `Linker`. Wasm memory is brand new — no state leaks between messages.
-3. The actor serializes the inbox `Value` to JSON.
-4. `task.execute` is invoked. The component runs.
-5. The returned string is parsed back to JSON and emitted to downstream.
+   `Linker`. This happens *once*; the bindings are reused for every
+   subsequent lifecycle call.
+3. `actor.setup(ctx)` is invoked. Use this to open connections, subscribe
+   to streams, or perform discovery.
+4. For each inbound message: the actor serializes the inbox `Value` to
+   JSON and calls `actor.handle(ctx, message)`. The component pushes any
+   outgoing payloads via `emit::send` during the handle call.
+5. On cancellation or inbox close, `actor.teardown(ctx)` is invoked
+   before the store is dropped — long-lived resources (BLE handles, MQTT
+   sessions) get a chance to close cleanly.
 
-If anything fails — instantiation, the component traps, the component
-returns an `Err(...)` from `execute`, output JSON is invalid — the
-actor's `run` loop returns `ActorError::Other`, the spawned task ends,
-and `WorkflowHandle::join()` will surface it in that actor's slot.
+If anything fails — instantiation, a setup/handle trap, the component
+returns an `Err(...)`, output JSON is malformed — the actor's `run` loop
+records the error, runs teardown best-effort (logging any errors instead
+of propagating), and returns the original error. `WorkflowHandle::join()`
+will surface it in that actor's slot.
+
+Cancellation is checked between `handle` invocations, not during. A
+long-running `handle` call cannot be interrupted mid-flight; once it
+returns, the runtime exits the loop and runs teardown. Wire up
+`epoch_deadline` plus an epoch ticker if you need hard deadlines on
+in-flight calls.
 
 ## What `DefaultHost` gives you
 
@@ -134,9 +162,14 @@ The off-the-shelf `DefaultHost` targets the canonical
   `"wasm.component"`. The actor's tokio task is already wrapped in a span
   carrying the `node` id, so log events automatically pick up context.
 - `fuchsia:http/outbound` — delegates to the injected `HttpClient`.
-  Sync-to-async bridging is done via `futures::executor::block_on`
-  (a known wart; see the [Capabilities](../architecture/host-capabilities.md)
-  page).
+- `fuchsia:actor/emit` — forwards JSON payloads to the actor's outbound
+  channel. Returns `Err("channel closed")` to the component if every
+  downstream is gone; the component typically propagates that out of
+  `handle`, which ends the actor cleanly.
+
+WIT imports run as async host functions, so the bindings can await
+directly on the underlying `HttpClient` and `Emitter::send` futures
+without blocking the wasmtime worker.
 
 For custom capabilities (MQTT, BLE, anything domain-specific), implement
 your own `WasmHost` — see [Host Extensibility](../architecture/host-extensibility.md).
@@ -159,11 +192,12 @@ which the test loads via `component_from_path`.
 ## Performance notes
 
 - **Component compilation is the expensive step.** Done once at
-  `builder.build()` time. Per-message cost is dominated by
-  instantiation + wasm execution.
-- **Linker is built once** at `build()` and reused across all
-  instantiations. (The legacy task runtime rebuilt the linker per call —
-  that overhead is gone.)
+  `builder.build()` time.
+- **Instantiation is once per actor**, not per message. With a persistent
+  store, the cost of bringing up a wasm instance is amortized across the
+  actor's lifetime.
+- **Linker is built once** at `build()` and reused across all actor
+  instances of this `WasmActor`.
 - **`Engine::clone`** is an `Arc` bump; one engine for the whole process
   is the recommended shape.
 - **No component caching across actors.** Each `WasmActor` instance

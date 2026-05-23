@@ -1,7 +1,6 @@
 use crate::host::WasmHost;
 use async_trait::async_trait;
 use fuchsia_actor::{Actor, ActorError, Context, Emitter, Inbox};
-use serde_json::Value;
 use std::sync::Arc;
 use wasmtime::component::{Component, Linker};
 use wasmtime::{Engine, Store};
@@ -9,16 +8,19 @@ use wasmtime::{Engine, Store};
 /// A [`fuchsia_actor::Actor`] backed by a wasm component.
 ///
 /// `WasmActor` is generic over a [`WasmHost`] that supplies the world-specific
-/// concerns (state shape, bindings type, import wiring, execute trampoline).
+/// concerns (state shape, bindings type, import wiring, lifecycle trampolines).
 /// Fuchsia ships [`DefaultHost`](crate::DefaultHost) for the canonical
 /// `actor-component` world; hosts with custom capabilities define their own.
 ///
-/// Per message: a fresh `Store<H::State>` is created, the component is
-/// instantiated against the pre-built `Linker`, `task.execute` is invoked,
-/// and the resulting JSON is emitted to downstream nodes.
+/// Per actor instance: one `Store<H::State>` is created at the top of `run`,
+/// the component is instantiated against the pre-built `Linker`, and the
+/// host trampolines drive `setup` → loop(`handle` per inbound message) →
+/// `teardown` on cancellation. The component pushes downstream payloads via
+/// the host-side `emit` import.
 ///
 /// Cheap to clone — `engine`, `component`, `linker`, and `host` are all
-/// `Arc`-backed (or have Arc semantics in their respective types).
+/// `Arc`-backed (or have `Arc` semantics in their respective types). Each
+/// clone produces an independent actor with its own store when run.
 pub struct WasmActor<H: WasmHost> {
   pub(crate) engine: Engine,
   pub(crate) component: Component,
@@ -44,9 +46,12 @@ impl<H: WasmHost> WasmActor<H> {
   pub fn builder(engine: Engine, host: H) -> crate::WasmActorBuilder<H> {
     crate::WasmActorBuilder::new(engine, host)
   }
+}
 
-  async fn invoke(&self, input: Value, ctx: &Context) -> Result<Value, ActorError> {
-    let mut store = Store::new(&self.engine, self.host.fresh_state());
+#[async_trait]
+impl<H: WasmHost> Actor for WasmActor<H> {
+  async fn run(&self, mut inbox: Inbox, emit: Emitter, ctx: Context) -> Result<(), ActorError> {
+    let mut store = Store::new(&self.engine, self.host.initial_state(emit));
     store.set_epoch_deadline(self.epoch_deadline);
 
     let bindings = self
@@ -55,40 +60,44 @@ impl<H: WasmHost> WasmActor<H> {
       .await
       .map_err(|e| ActorError::Other(format!("wasm instantiation failed: {e}")))?;
 
-    let data = serde_json::to_string(&input)
-      .map_err(|e| ActorError::Other(format!("input serialize: {e}")))?;
-
-    let result = self
-      .host
-      .execute(&bindings, &mut store, ctx, &data)
-      .await
-      .map_err(|e| ActorError::Other(format!("wasm trap: {e}")))?;
-
-    match result {
-      Ok(output) => {
-        serde_json::from_str(&output).map_err(|e| ActorError::Other(format!("output parse: {e}")))
-      }
-      Err(msg) => Err(ActorError::Other(format!(
-        "component reported error: {msg}"
-      ))),
+    match self.host.call_setup(&bindings, &mut store, &ctx).await {
+      Err(e) => return Err(ActorError::Other(format!("wasm trap (setup): {e}"))),
+      Ok(Err(msg)) => return Err(ActorError::Other(format!("component setup error: {msg}"))),
+      Ok(Ok(())) => {}
     }
-  }
-}
 
-#[async_trait]
-impl<H: WasmHost> Actor for WasmActor<H> {
-  async fn run(&self, mut inbox: Inbox, emit: Emitter, ctx: Context) -> Result<(), ActorError> {
-    loop {
-      tokio::select! {
-          _ = ctx.cancelled() => return Ok(()),
-          msg = inbox.recv() => match msg {
-              Some(v) => {
-                  let output = self.invoke(v, &ctx).await?;
-                  emit.send(output).await?;
-              }
-              None => return Ok(()),
-          }
+    let loop_result: Result<(), ActorError> = loop {
+      let msg = tokio::select! {
+        _ = ctx.cancelled() => break Ok(()),
+        msg = inbox.recv() => msg,
+      };
+
+      let Some(value) = msg else {
+        break Ok(());
+      };
+
+      let data = match serde_json::to_string(&value) {
+        Ok(s) => s,
+        Err(e) => break Err(ActorError::Other(format!("input serialize: {e}"))),
+      };
+
+      match self
+        .host
+        .call_handle(&bindings, &mut store, &ctx, &data)
+        .await
+      {
+        Err(e) => break Err(ActorError::Other(format!("wasm trap (handle): {e}"))),
+        Ok(Err(msg)) => break Err(ActorError::Other(format!("component handle error: {msg}"))),
+        Ok(Ok(())) => {}
       }
+    };
+
+    match self.host.call_teardown(&bindings, &mut store, &ctx).await {
+      Err(e) => tracing::warn!(error = %e, "wasm trap during teardown"),
+      Ok(Err(msg)) => tracing::warn!(error = %msg, "component teardown error"),
+      Ok(Ok(())) => {}
     }
+
+    loop_result
   }
 }

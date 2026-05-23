@@ -1,9 +1,10 @@
 //! `DefaultHost` — built-in [`WasmHost`] implementation for the canonical
-//! `fuchsia:platform/actor-component` world (log + http imports, task export).
+//! `fuchsia:platform/actor-component` world (log + http + emit imports,
+//! actor lifecycle export).
 
 use crate::host::WasmHost;
 use async_trait::async_trait;
-use fuchsia_actor::Context;
+use fuchsia_actor::{Context, Emitter};
 use fuchsia_capabilities::http::{HttpClient, HttpError, HttpRequest, HttpResponse};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -15,17 +16,20 @@ use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiVie
 wasmtime::component::bindgen!({
     path: "../../wit",
     world: "fuchsia:platform/actor-component@0.1.0",
+    imports: { default: async },
     exports: { default: async },
 });
 
-use exports::fuchsia::task::task::Context as WitContext;
+use exports::fuchsia::actor::actor::Context as WitContext;
 
-/// Per-`Store` state for [`DefaultHost`]. Holds the `WasiCtx` and a clone of
-/// the host's HTTP client so import host functions can route through it.
+/// Per-`Store` state for [`DefaultHost`]. Holds the `WasiCtx`, the HTTP
+/// client, and the downstream `Emitter` so the `emit` import callback can
+/// reach it. Built once per actor instance in [`DefaultHost::initial_state`].
 pub struct DefaultHostState {
   wasi: WasiCtx,
   table: ResourceTable,
   http: Arc<dyn HttpClient>,
+  emitter: Emitter,
 }
 
 impl WasiView for DefaultHostState {
@@ -47,7 +51,7 @@ impl HasData for DefaultHostState {
 // node id, so events emitted here automatically inherit that context.
 
 impl fuchsia::log::log::Host for DefaultHostState {
-  fn log(&mut self, level: fuchsia::log::log::Level, message: String) {
+  async fn log(&mut self, level: fuchsia::log::log::Level, message: String) {
     use fuchsia::log::log::Level::*;
     match level {
       Trace => tracing::trace!(target: "wasm.component", "{message}"),
@@ -60,13 +64,9 @@ impl fuchsia::log::log::Host for DefaultHostState {
 }
 
 // ---- http import: delegate to injected HttpClient -------------------------
-//
-// WIT functions are sync; the HttpClient trait is async. We bridge with
-// `futures::executor::block_on` on a separate executor so it doesn't deadlock
-// the wasmtime worker. The wart goes away when we move WIT imports to async.
 
 impl fuchsia::http::outbound::Host for DefaultHostState {
-  fn send(
+  async fn send(
     &mut self,
     req: fuchsia::http::outbound::HttpRequest,
   ) -> Result<fuchsia::http::outbound::HttpResponse, fuchsia::http::outbound::HttpError> {
@@ -77,10 +77,9 @@ impl fuchsia::http::outbound::Host for DefaultHostState {
       body: req.body,
     };
 
-    let http = Arc::clone(&self.http);
-    let result = futures::executor::block_on(http.send(request));
-
-    result
+    Arc::clone(&self.http)
+      .send(request)
+      .await
       .map(|resp: HttpResponse| fuchsia::http::outbound::HttpResponse {
         status: resp.status,
         headers: resp.headers.into_iter().collect(),
@@ -96,12 +95,26 @@ impl fuchsia::http::outbound::Host for DefaultHostState {
   }
 }
 
+// ---- emit import: forward component emissions to the downstream channel ---
+
+impl fuchsia::actor::emit::Host for DefaultHostState {
+  async fn send(&mut self, data: String) -> Result<(), String> {
+    let value = serde_json::from_str(&data).map_err(|e| format!("emit: invalid JSON: {e}"))?;
+    self
+      .emitter
+      .send(value)
+      .await
+      .map_err(|_| "channel closed".to_string())
+  }
+}
+
 /// Built-in [`WasmHost`] for the canonical `actor-component` world.
 ///
-/// Wires `log` (→ `tracing`) and `http` (→ the injected `HttpClient`).
-/// Hosts that only need these two capabilities can register their wasm
-/// actors with `WasmActor<DefaultHost>` directly; richer hosts implement
-/// `WasmHost` themselves.
+/// Wires `log` (→ `tracing`), `http` (→ the injected `HttpClient`), and
+/// `emit` (→ the actor's downstream channel). Hosts that only need these
+/// three capabilities can register their wasm actors with
+/// `WasmActor<DefaultHost>` directly; richer hosts implement `WasmHost`
+/// themselves.
 #[derive(Clone)]
 pub struct DefaultHost {
   http: Arc<dyn HttpClient>,
@@ -124,11 +137,12 @@ impl WasmHost for DefaultHost {
     Ok(())
   }
 
-  fn fresh_state(&self) -> Self::State {
+  fn initial_state(&self, emitter: Emitter) -> Self::State {
     DefaultHostState {
       wasi: WasiCtxBuilder::new().build(),
       table: ResourceTable::new(),
       http: Arc::clone(&self.http),
+      emitter,
     }
   }
 
@@ -141,22 +155,51 @@ impl WasmHost for DefaultHost {
     ActorComponent::instantiate_async(store, component, linker).await
   }
 
-  async fn execute(
+  async fn call_setup(
     &self,
     bindings: &Self::Bindings,
     store: &mut Store<Self::State>,
     ctx: &Context,
-    input: &str,
-  ) -> wasmtime::Result<Result<String, String>> {
-    let wit_ctx = WitContext {
-      execution_id: String::new(),
-      node_id: ctx.node_id.clone(),
-      task_id: String::new(),
-    };
-    let result = bindings
-      .fuchsia_task_task()
-      .call_execute(store, &wit_ctx, input)
-      .await?;
-    Ok(result.map(|o| o.data))
+  ) -> wasmtime::Result<Result<(), String>> {
+    let wit_ctx = wit_context(ctx);
+    bindings
+      .fuchsia_actor_actor()
+      .call_setup(store, &wit_ctx)
+      .await
+  }
+
+  async fn call_handle(
+    &self,
+    bindings: &Self::Bindings,
+    store: &mut Store<Self::State>,
+    ctx: &Context,
+    message: &str,
+  ) -> wasmtime::Result<Result<(), String>> {
+    let wit_ctx = wit_context(ctx);
+    bindings
+      .fuchsia_actor_actor()
+      .call_handle(store, &wit_ctx, message)
+      .await
+  }
+
+  async fn call_teardown(
+    &self,
+    bindings: &Self::Bindings,
+    store: &mut Store<Self::State>,
+    ctx: &Context,
+  ) -> wasmtime::Result<Result<(), String>> {
+    let wit_ctx = wit_context(ctx);
+    bindings
+      .fuchsia_actor_actor()
+      .call_teardown(store, &wit_ctx)
+      .await
+  }
+}
+
+fn wit_context(ctx: &Context) -> WitContext {
+  WitContext {
+    execution_id: String::new(),
+    node_id: ctx.node_id.clone(),
+    task_id: String::new(),
   }
 }

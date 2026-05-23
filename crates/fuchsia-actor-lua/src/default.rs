@@ -1,20 +1,23 @@
 //! `DefaultLuaHost` — built-in [`LuaHost`] for the canonical capability set
-//! (log + http). Mirrors [`fuchsia_actor_wasm::DefaultHost`].
+//! (log + http + emit). Mirrors [`fuchsia_actor_wasm::DefaultHost`].
 
 use crate::host::LuaHost;
+use fuchsia_actor::Emitter;
 use fuchsia_capabilities::http::{HttpClient, HttpError, HttpRequest};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Built-in [`LuaHost`] for the canonical capability set.
 ///
-/// Registers two globals on every fresh Lua state:
+/// Registers three globals on the Lua state:
 ///
 /// - `log.log(level, message)` — routes to `tracing` under target `"lua.actor"`.
 ///   `level` is `"trace" | "debug" | "info" | "warn" | "error"`.
 /// - `http.send({ method, url, headers, body }) -> { status, headers, body }` —
 ///   delegates to the injected [`HttpClient`]. Errors are surfaced as Lua
 ///   runtime errors with the underlying `HttpError` display.
+/// - `emit(data)` — pushes a JSON-encoded payload to the actor's outbound
+///   channel. Returns a Lua error if the downstream channel is closed.
 #[derive(Clone)]
 pub struct DefaultLuaHost {
   http: Arc<dyn HttpClient>,
@@ -27,9 +30,10 @@ impl DefaultLuaHost {
 }
 
 impl LuaHost for DefaultLuaHost {
-  fn populate(&self, lua: &mlua::Lua) -> mlua::Result<()> {
+  fn populate(&self, lua: &mlua::Lua, emitter: Emitter) -> mlua::Result<()> {
     register_log(lua)?;
     register_http(lua, Arc::clone(&self.http))?;
+    register_emit(lua, emitter)?;
     Ok(())
   }
 }
@@ -80,6 +84,18 @@ fn register_http(lua: &mlua::Lua, http: Arc<dyn HttpClient>) -> mlua::Result<()>
     })?,
   )?;
   lua.globals().set("http", table)?;
+  Ok(())
+}
+
+fn register_emit(lua: &mlua::Lua, emitter: Emitter) -> mlua::Result<()> {
+  let emit_fn = lua.create_function(move |_, data: String| {
+    let value: serde_json::Value = serde_json::from_str(&data)
+      .map_err(|e| mlua::Error::external(format!("emit: invalid JSON: {e}")))?;
+    futures::executor::block_on(emitter.send(value))
+      .map_err(|_| mlua::Error::external("channel closed".to_string()))?;
+    Ok(())
+  })?;
+  lua.globals().set("emit", emit_fn)?;
   Ok(())
 }
 

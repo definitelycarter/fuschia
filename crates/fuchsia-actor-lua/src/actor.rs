@@ -1,7 +1,6 @@
 use crate::host::LuaHost;
 use async_trait::async_trait;
 use fuchsia_actor::{Actor, ActorError, Context, Emitter, Inbox};
-use serde_json::Value;
 use std::sync::Arc;
 
 /// A [`fuchsia_actor::Actor`] backed by a Lua script.
@@ -11,12 +10,18 @@ use std::sync::Arc;
 /// for the canonical capability set; hosts with custom capabilities define
 /// their own.
 ///
-/// Per message: a fresh `mlua::Lua` is created, the host's globals are
-/// registered, the script source is loaded (defining a global `execute`
-/// function), and `execute(ctx, data)` is invoked with the inbound JSON
-/// payload. The returned JSON string is emitted to downstream nodes.
+/// Per actor instance: one `mlua::Lua` is created at the top of `run`, the
+/// host's globals are registered (including the `emit` closure that forwards
+/// to the actor's outbound channel), and the script source is loaded once.
+/// The runtime then drives the script's lifecycle: optional `setup()` →
+/// loop(`handle(ctx, message)` per inbox delivery) → optional `teardown()`
+/// on cancellation.
 ///
-/// Cheap to clone — `source` and `host` are `Arc`-shared.
+/// `handle` is required; `setup` and `teardown` are optional globals — the
+/// runtime skips them if undefined.
+///
+/// Cheap to clone — `source` and `host` are `Arc`-shared. Each clone runs
+/// its own Lua VM when started.
 pub struct LuaActor<H: LuaHost> {
   pub(crate) source: Arc<String>,
   pub(crate) host: Arc<H>,
@@ -36,13 +41,32 @@ impl<H: LuaHost> LuaActor<H> {
   pub fn builder(host: H) -> crate::LuaActorBuilder<H> {
     crate::LuaActorBuilder::new(host)
   }
+}
 
-  fn invoke(&self, input: Value, ctx: &Context) -> Result<Value, ActorError> {
+fn build_ctx(lua: &mlua::Lua, ctx: &Context) -> Result<mlua::Table, ActorError> {
+  let lua_ctx = lua
+    .create_table()
+    .map_err(|e| ActorError::Other(format!("lua ctx table: {e}")))?;
+  lua_ctx
+    .set("node_id", ctx.node_id.as_str())
+    .map_err(|e| ActorError::Other(format!("lua ctx set: {e}")))?;
+  lua_ctx
+    .set("execution_id", "")
+    .map_err(|e| ActorError::Other(format!("lua ctx set: {e}")))?;
+  lua_ctx
+    .set("task_id", "")
+    .map_err(|e| ActorError::Other(format!("lua ctx set: {e}")))?;
+  Ok(lua_ctx)
+}
+
+#[async_trait]
+impl<H: LuaHost> Actor for LuaActor<H> {
+  async fn run(&self, mut inbox: Inbox, emit: Emitter, ctx: Context) -> Result<(), ActorError> {
     let lua = mlua::Lua::new();
 
     self
       .host
-      .populate(&lua)
+      .populate(&lua, emit)
       .map_err(|e| ActorError::Other(format!("lua populate: {e}")))?;
 
     lua
@@ -50,48 +74,55 @@ impl<H: LuaHost> LuaActor<H> {
       .exec()
       .map_err(|e| ActorError::Other(format!("lua load: {e}")))?;
 
-    let execute: mlua::Function = lua.globals().get("execute").map_err(|_| {
-      ActorError::Other("script must define an `execute(ctx, data)` function".into())
+    let setup_fn: Option<mlua::Function> = lua.globals().get("setup").ok();
+    let teardown_fn: Option<mlua::Function> = lua.globals().get("teardown").ok();
+    let handle_fn: mlua::Function = lua.globals().get("handle").map_err(|_| {
+      ActorError::Other("script must define a `handle(ctx, message)` function".into())
     })?;
 
-    let lua_ctx = lua
-      .create_table()
-      .map_err(|e| ActorError::Other(format!("lua ctx table: {e}")))?;
-    lua_ctx
-      .set("node_id", ctx.node_id.clone())
-      .map_err(|e| ActorError::Other(format!("lua ctx set: {e}")))?;
-    lua_ctx
-      .set("execution_id", "")
-      .map_err(|e| ActorError::Other(format!("lua ctx set: {e}")))?;
-    lua_ctx
-      .set("task_id", "")
-      .map_err(|e| ActorError::Other(format!("lua ctx set: {e}")))?;
+    if let Some(setup) = setup_fn {
+      let setup_ctx = build_ctx(&lua, &ctx)?;
+      setup
+        .call::<()>(setup_ctx)
+        .map_err(|e| ActorError::Other(format!("lua setup: {e}")))?;
+    }
 
-    let data = serde_json::to_string(&input)
-      .map_err(|e| ActorError::Other(format!("input serialize: {e}")))?;
+    let loop_result: Result<(), ActorError> = loop {
+      let msg = tokio::select! {
+        _ = ctx.cancelled() => break Ok(()),
+        msg = inbox.recv() => msg,
+      };
 
-    let result: String = execute
-      .call((lua_ctx, data))
-      .map_err(|e| ActorError::Other(format!("lua execute: {e}")))?;
+      let Some(value) = msg else {
+        break Ok(());
+      };
 
-    serde_json::from_str(&result).map_err(|e| ActorError::Other(format!("output parse: {e}")))
-  }
-}
+      let data = match serde_json::to_string(&value) {
+        Ok(s) => s,
+        Err(e) => break Err(ActorError::Other(format!("input serialize: {e}"))),
+      };
 
-#[async_trait]
-impl<H: LuaHost> Actor for LuaActor<H> {
-  async fn run(&self, mut inbox: Inbox, emit: Emitter, ctx: Context) -> Result<(), ActorError> {
-    loop {
-      tokio::select! {
-          _ = ctx.cancelled() => return Ok(()),
-          msg = inbox.recv() => match msg {
-              Some(v) => {
-                  let output = self.invoke(v, &ctx)?;
-                  emit.send(output).await?;
-              }
-              None => return Ok(()),
+      let handle_ctx = match build_ctx(&lua, &ctx) {
+        Ok(c) => c,
+        Err(e) => break Err(e),
+      };
+
+      if let Err(e) = handle_fn.call::<()>((handle_ctx, data)) {
+        break Err(ActorError::Other(format!("lua handle: {e}")));
+      }
+    };
+
+    if let Some(teardown) = teardown_fn {
+      match build_ctx(&lua, &ctx) {
+        Ok(teardown_ctx) => {
+          if let Err(e) = teardown.call::<()>(teardown_ctx) {
+            tracing::warn!(error = %e, "lua teardown error");
           }
+        }
+        Err(e) => tracing::warn!(error = %e, "lua teardown ctx build failed"),
       }
     }
+
+    loop_result
   }
 }

@@ -30,9 +30,9 @@ impl Actor for Recorder {
 }
 
 const SCRIPT: &str = r#"
-function execute(ctx, data)
-  log.log("info", "lua: node " .. ctx.node_id .. " received " .. data)
-  return string.format('{"echoed": %s, "node": "%s"}', data, ctx.node_id)
+function handle(ctx, message)
+  log.log("info", "lua: node " .. ctx.node_id .. " received " .. message)
+  emit(string.format('{"echoed": %s, "node": "%s"}', message, ctx.node_id))
 end
 "#;
 

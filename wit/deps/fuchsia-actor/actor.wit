@@ -1,0 +1,26 @@
+package fuchsia:actor@0.1.0;
+
+/// Lifecycle interface that actor components export. The host calls these
+/// in order: `setup` once before the message loop, `handle` per inbound
+/// message, `teardown` once on cancellation before the store is dropped.
+interface actor {
+  record context {
+    execution-id: string,
+    node-id: string,
+    task-id: string,
+  }
+
+  /// One-time initialization. Runs before the message loop. Use this to
+  /// open connections, subscribe to streams, or discover capabilities.
+  setup: func(ctx: context) -> result<_, string>;
+
+  /// Per-message handler. Runs once per inbox delivery. Emissions to
+  /// downstream actors are pushed via the host-imported `emit` interface,
+  /// not returned from this function.
+  handle: func(ctx: context, message: string) -> result<_, string>;
+
+  /// One-time teardown. Runs on cancellation or inbox close before the
+  /// store is dropped. Use this to close connections, send shutdown
+  /// frames, or release OS-level resources.
+  teardown: func(ctx: context) -> result<_, string>;
+}

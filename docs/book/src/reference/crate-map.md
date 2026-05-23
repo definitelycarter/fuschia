@@ -12,8 +12,8 @@ subset they need.
 | `fuchsia-actor` | `Actor` trait + `Inbox` / `Emitter` / `Context` / `ActorError`. The API surface third-party actor packs depend on — kept intentionally lean so plugin authors don't transitively pull in the engine. | `async-trait`, `serde_json`, `thiserror`, `tokio[sync]`, `tokio-util[rt]`, `tracing` |
 | `fuchsia-runtime` | `Graph`, `Node`, `Edge`, `ActorRegistry`, `ActorFactory`, `Orchestrator`, `WorkflowHandle`. Wires bounded tokio mpsc channels per graph edge, spawns one task per node, handles cancellation and completion-cascade. Criterion benches live under `benches/`. | `fuchsia-actor`, `serde`, `serde_json`, `tokio`, `tokio-util`, `tracing` |
 | `fuchsia-capabilities` | Universal capability interfaces. Currently `http::HttpClient` async trait + `AllowedHosts` policy + `ReqwestHttp` default impl. Hosts inject these into actor constructors. | `async-trait`, `reqwest`, `thiserror`, `url` |
-| `fuchsia-actor-wasm` | Wasm-component-hosting `Actor` implementation. `WasmActor<H: WasmHost>` is generic over a host trait so hosts can define their own WIT world. Ships `DefaultHost` for the canonical `actor-component` world (log + http). | `fuchsia-actor`, `fuchsia-capabilities`, `async-trait`, `futures`, `serde_json`, `tokio`, `tracing`, `wasmtime` (component-model + async), `wasmtime-wasi` |
-| `fuchsia-actor-lua` | Lua-script-hosting `Actor` implementation. `LuaActor<H: LuaHost>` mirrors `WasmActor` — generic over a host trait that owns global registration. Ships `DefaultLuaHost` with log + http. | `fuchsia-actor`, `fuchsia-capabilities`, `async-trait`, `futures`, `mlua` (lua54 + send + vendored), `serde_json`, `tokio`, `tracing` |
+| `fuchsia-actor-wasm` | Wasm-component-hosting `Actor` implementation. `WasmActor<H: WasmHost>` is generic over a host trait so hosts can define their own WIT world. Persistent `Store` per actor; drives the component's `setup`/`handle`/`teardown` lifecycle. Ships `DefaultHost` for the canonical `actor-component` world (log + http + emit). | `fuchsia-actor`, `fuchsia-capabilities`, `async-trait`, `futures`, `serde_json`, `tokio`, `tracing`, `wasmtime` (component-model + async), `wasmtime-wasi` |
+| `fuchsia-actor-lua` | Lua-script-hosting `Actor` implementation. `LuaActor<H: LuaHost>` mirrors `WasmActor` — generic over a host trait that owns global registration. Persistent VM per actor; drives optional `setup()` / required `handle(ctx, msg)` / optional `teardown()`. Ships `DefaultLuaHost` with log + http + emit. | `fuchsia-actor`, `fuchsia-capabilities`, `async-trait`, `futures`, `mlua` (lua54 + send + vendored), `serde_json`, `tokio`, `tracing` |
 
 ## Dependency Flow
 
@@ -40,9 +40,10 @@ or on the runtime.
 ## Test Components
 
 - `test-components/test-actor-component/` — a small wasm component built
-  against the `actor-component` world (log import, task export). Used by
-  the `fuchsia-actor-wasm` integration test. Workspace-excluded; requires
-  `cargo component build --release` before tests run.
+  against the `actor-component` world (log + emit imports, actor
+  lifecycle export). Used by the `fuchsia-actor-wasm` integration test.
+  Workspace-excluded; requires `cargo component build --release` before
+  tests run.
 
 ## What's Not Here
 

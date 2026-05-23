@@ -6,12 +6,13 @@ package fuchsia:platform@0.1.0;
 world actor-platform {
   import fuchsia:log/log@0.1.0;
   import fuchsia:http/outbound@0.1.0;
+  import fuchsia:actor/emit@0.1.0;
 }
 
 /// World for actor components built against the canonical fuchsia capability
-/// set. Plugin authors targeting this world get HTTP + log imports and export
-/// the task interface.
+/// set. Plugin authors targeting this world get log + http + emit imports
+/// and export the actor lifecycle interface.
 world actor-component {
   include actor-platform;
-  export fuchsia:task/task@0.1.0;
+  export fuchsia:actor/actor@0.1.0;
 }

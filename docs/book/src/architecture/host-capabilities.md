@@ -58,6 +58,28 @@ subscriber to install, and that lives at the application boundary.
 
 [`tracing`]: https://docs.rs/tracing
 
+## Emit: routing component output to the channel
+
+Native Rust actors receive an `Emitter` as a `run` argument and call
+`.send(value).await` directly. Wasm and Lua actors can't — they don't
+have access to the Rust-side channel — so emission flows through a host
+capability instead:
+
+- **Inside Wasm components:** the WIT interface `fuchsia:actor/emit`
+  provides a `send(data: string) -> result<_, string>` function. The
+  `DefaultHost` in `fuchsia-actor-wasm` implements it by JSON-parsing the
+  payload and calling the actor's `Emitter::send`. Returns
+  `Err("channel closed")` to the component if every downstream is gone.
+- **Inside Lua scripts:** the global `emit(data)` function does the same,
+  registered by `DefaultLuaHost`. Calling `emit("...")` with a closed
+  downstream raises a Lua error.
+
+Like log, emit is *universal infrastructure* rather than a configurable
+capability — every actor world needs to be able to push downstream,
+regardless of what else the host wires in. Custom `WasmHost` / `LuaHost`
+implementations must include the emit wiring; see
+[Host Extensibility](./host-extensibility.md).
+
 ## The injection pattern
 
 Capabilities are injected at **actor registration time**, not at

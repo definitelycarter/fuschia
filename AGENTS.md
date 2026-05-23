@@ -25,15 +25,22 @@ defined and registered by the host.
     default impl. Hosts inject these into actor constructors.
   - `fuchsia-actor-wasm` — Wasm-component-hosting `Actor` impl, generic over
     a `WasmHost` trait that owns the world-specific bindgen and host-function
-    wiring. Ships `DefaultHost` for the canonical `actor-component` world
-    (log → tracing, http → injected `HttpClient`).
+    wiring. Persistent `Store` per actor; drives the component's
+    `setup`/`handle`/`teardown` lifecycle. Ships `DefaultHost` for the
+    canonical `actor-component` world (log → tracing, http → injected
+    `HttpClient`, emit → actor's outbound channel).
   - `fuchsia-actor-lua` — Lua-script-hosting `Actor` impl, generic over a
-    `LuaHost` trait that owns Lua-global registration. Ships `DefaultLuaHost`
-    for the canonical capability set, matching the Wasm side.
+    `LuaHost` trait that owns Lua-global registration. Persistent VM per
+    actor; drives optional `setup()` / required `handle(ctx, msg)` /
+    optional `teardown()`. Ships `DefaultLuaHost` for the canonical
+    capability set, matching the Wasm side.
 - `wit/` — WIT definitions used by `fuchsia-actor-wasm` and components
-  - `world.wit` — `actor-platform` world (log + http imports) and `actor-component`
-    world (extends platform, exports task)
-  - `deps/fuchsia-task/task.wit` — Task interface: `execute(ctx, data) -> result`
+  - `world.wit` — `actor-platform` world (log + http + emit imports) and
+    `actor-component` world (extends platform, exports the actor lifecycle)
+  - `deps/fuchsia-actor/actor.wit` — Actor lifecycle: `setup(ctx)`,
+    `handle(ctx, message)`, `teardown(ctx)`. All return `result<_, string>`.
+  - `deps/fuchsia-actor/emit.wit` — Host-imported `emit.send(data)` that
+    forwards JSON payloads to the actor's outbound channel
   - `deps/fuchsia-log/log.wit` — Log interface routed to `tracing` host-side
   - `deps/fuchsia-http/outbound.wit` — Outbound HTTP interface backed by
     `fuchsia-capabilities::http::HttpClient`

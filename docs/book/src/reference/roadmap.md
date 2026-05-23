@@ -10,9 +10,9 @@ when work lands (no strikethrough).
 | Per-actor retry policy | Configurable retries with backoff applied to a node's `handle` call | `fuchsia-runtime` orchestrator |
 | Built-in long-running actors | Debouncer, throttle, window, threshold-over-time as standard `fuchsia.*` actor packs | `fuchsia-runtime` or a separate `fuchsia-builtins` crate |
 | Workflow-level allowlist of actor names | Workflows declare which `node.actor` keys they're permitted to invoke; resolver rejects unknown | `fuchsia-runtime::ActorRegistry` |
-| Async WIT imports | Move `fuchsia:http/outbound` to async imports so `DefaultHost::send` no longer needs `block_on` | `fuchsia-actor-wasm`; requires wasmtime concurrent-imports |
-| Lua script caching | Cache pre-compiled Lua chunks per actor instance; current impl re-loads source per message | `fuchsia-actor-lua` |
-| Cycle support / persistent topologies | Defined semantics for back-edges and long-running actor lifecycles within a graph | `fuchsia-runtime` |
+| Per-instance config plumbing | Forward graph node JSON config to wasm/Lua actors (host import `config.get(key)` or similar). Today actors get no per-instance configuration beyond what the host factory closure bakes in. | `fuchsia-actor-wasm`, `fuchsia-actor-lua`, `fuchsia-runtime` |
+| Capability-style device binding | When BLE/MQTT/etc. capabilities land, bind each actor instance to one device handle on the host side so component-side functions never name addresses. | host crates, per-capability WIT |
+| Cycle support / persistent topologies | Defined semantics for back-edges within a graph (persistent actor lifecycles are already supported — this is about graph shape). | `fuchsia-runtime` |
 | Distributed actors | Documented patterns + sample host code for splitting a graph across processes via MQTT/HTTP transport actors | Likely lives in user/host docs, not core |
 
 ## Gaps
@@ -29,15 +29,16 @@ when work lands (no strikethrough).
 
 | Gap | Priority |
 |-----|----------|
-| `DefaultHost::send` (http) uses `futures::executor::block_on` to bridge sync WIT to async `HttpClient` | High when HTTP becomes hot-path |
 | No epoch-ticker integration — `epoch_deadline` builder exists but nothing drives the ticker, so timeouts don't fire | Medium |
+| Cancellation is checked between `handle` calls, not during; long-running handlers cannot be interrupted mid-flight without epoch interruption | Medium |
 | One `Component` per `WasmActor` — shared compilation across actor registrations requires the host to compile once and pass `Component` in | Low (already supported, just undocumented as the recommended path for hot startup) |
 
 ### `fuchsia-actor-lua`
 
 | Gap | Priority |
 |-----|----------|
-| Per-message Lua VM creation has measurable cost; could be reduced via per-actor VM with locking | Low until benched |
+| `emit` and `http.send` use `futures::executor::block_on` from sync Lua callbacks; works but unprincipled in a tokio context | Medium |
+| Cancellation is checked between `handle` calls, not during; long-running Lua callbacks cannot be interrupted mid-flight | Medium |
 
 ### `fuchsia-capabilities`
 
