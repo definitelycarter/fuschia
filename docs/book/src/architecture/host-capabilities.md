@@ -1,123 +1,118 @@
-# Host Capabilities
+# Capabilities
 
-Host capabilities are services provided to running tasks. Each capability has **one implementation** shared across all runtimes. Runtimes only write thin binding glue to expose these to their VM.
+A **capability** is host-provided functionality that actors can use:
+making HTTP requests, reading from a key-value store, publishing to MQTT,
+talking to a device pool. Fuchsia ships exactly the capabilities that are
+universal enough to standardize — HTTP and log routing — and leaves
+everything else to the host.
 
-## Design Principle
+## Universal: `fuchsia-capabilities`
 
-```mermaid
-graph TD
-    Impl["Shared Implementation<br/>(one crate per capability)"]
-    Impl --> WIT["WIT import<br/>(wasmtime)"]
-    Impl --> LuaG["Lua global<br/>(mlua)"]
-    Impl --> JSB["JS binding<br/>(deno/rquickjs)"]
-```
-
-The actual logic (making HTTP requests, reading KV, writing logs) lives in one place. Each runtime has a thin adapter — typically a few lines — that maps its VM's foreign function interface to the shared implementation.
-
-## Capability Crates
-
-Each capability is its own crate. These crates have **zero knowledge** of wasmtime, Lua, or any VM.
-
-### `fuchsia-host-kv` — Key-Value Store
-
-Workflow-scoped key-value storage. Shared across tasks within an execution — node 1 can write, node 2 can read.
+The `fuchsia-capabilities` crate currently exposes one trait:
 
 ```rust
-pub trait KvStore: Send + Sync {
-    fn get(&self, key: &str) -> Pin<Box<dyn Future<Output = Option<String>> + Send + '_>>;
-    fn set(&mut self, key: &str, value: String) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
-    fn delete(&mut self, key: &str) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
+#[async_trait]
+pub trait HttpClient: Send + Sync {
+    async fn send(&self, req: HttpRequest) -> Result<HttpResponse, HttpError>;
 }
 ```
 
-Wrapped in `Arc<Mutex<dyn KvStore>>` in the `Capabilities` struct for shared mutable access.
-
-Implementations:
-- `InMemoryKvStore` — HashMap-based, for single-execution or testing
-- Future: Redis-backed for persistence across executions
-
-### `fuchsia-host-config` — Configuration
-
-Read-only configuration lookup. Values come from the workflow node definition.
+Plus value types (`HttpRequest`, `HttpResponse`, `HttpError`), an
+`AllowedHosts` policy (exact + wildcard-prefix matching), and a
+`ReqwestHttp` default implementation built on `reqwest`.
 
 ```rust
-pub trait ConfigHost: Send + Sync {
-    fn get(&self, key: &str) -> Option<&str>;
-}
+use fuchsia_capabilities::http::{AllowedHosts, ReqwestHttp};
+
+let http: Arc<dyn HttpClient> = Arc::new(
+    ReqwestHttp::new(AllowedHosts::new(["api.example.com", "*.googleapis.com"]))
+);
 ```
 
-Implementation: `MapConfig` — backed by `HashMap<String, String>`.
+The `AllowedHosts` check happens *inside* the client — any request whose
+URL's host doesn't match returns `HttpError::HostNotAllowed`. That means
+the actor calling `http.send(...)` doesn't decide what's allowed; the host
+that constructed the `HttpClient` already did.
 
-### `fuchsia-host-log` — Logging
+## Logging: tracing, not a capability
 
-Routes component logs to the host's tracing infrastructure with execution context.
+`fuchsia-capabilities` does **not** define a `LogClient` trait. Log
+routing in Fuchsia goes through [`tracing`] directly, and `tracing`
+already abstracts where logs go (the consuming application installs the
+subscriber — stdout, JSON, OTLP, journald, whatever).
+
+- **Inside Rust actors:** just call `tracing::info!`, `tracing::debug!`,
+  etc. The orchestrator wraps each actor's task in a span containing the
+  `node` id and `kind`, so events automatically pick up that context.
+- **Inside Wasm components:** the WIT interface `fuchsia:log/log`
+  provides a `log(level, message)` function. The `DefaultHost` in
+  `fuchsia-actor-wasm` implements it by routing to `tracing` under the
+  target `"wasm.component"`.
+- **Inside Lua scripts:** the global `log` table provides
+  `log.log(level, message)`. The `DefaultLuaHost` in `fuchsia-actor-lua`
+  routes the same way under the target `"lua.actor"`.
+
+There's no Rust trait because there's no choice for the host to make at
+the trait layer — `tracing` *is* the abstraction. The choice is which
+subscriber to install, and that lives at the application boundary.
+
+[`tracing`]: https://docs.rs/tracing
+
+## The injection pattern
+
+Capabilities are injected at **actor registration time**, not at
+workflow-start time. The factory closure registered with
+`ActorRegistry::register` captures whatever handles the actor needs:
 
 ```rust
-pub trait LogHost: Send + Sync {
-    fn log(&self, level: LogLevel, message: &str);
-}
+let http = Arc::new(ReqwestHttp::new(AllowedHosts::new(["api.example.com"])));
+
+registry.register::<MyApiCaller, MyConfig, _>("my.api-caller", move |cfg| {
+    MyApiCaller::new(http.clone(), cfg.endpoint)
+});
 ```
 
-Implementation: `TracingLogHost` — routes to the `tracing` crate with `execution_id` and `node_id` as span fields.
+Two important properties:
 
-### `fuchsia-host-http` — HTTP Client
+1. **The actor doesn't pick its capability impl.** It receives an
+   `Arc<dyn HttpClient>` and uses it. The host decides whether that's
+   `ReqwestHttp` configured with one allow-list, with another, or a mock
+   for tests.
+2. **The capability is per-host, not per-actor.** Two actors registered
+   in the same host typically share the same `Arc<dyn HttpClient>`. That
+   means the allow-list is uniform within a host — by design. If you
+   want different allow-lists for different actor classes, build that
+   into the host by registering them with different `Arc`s.
 
-HTTP requests with policy enforcement.
+## Domain capabilities
 
-```rust
-pub struct HttpPolicy {
-    pub allowed_hosts: Vec<String>,  // supports wildcards: "*.googleapis.com"
-}
+For anything beyond HTTP and log, the host defines its own traits.
+Common examples for an IoT host:
 
-pub trait HttpHost: Send + Sync {
-    fn request(&self, req: HttpRequest)
-        -> Pin<Box<dyn Future<Output = Result<HttpResponse, HttpError>> + Send + '_>>;
-}
-```
+- `KvStore` — a key-value store (Redis, sled, local cache)
+- `MqttPublisher` — fan-out to an MQTT broker
+- `ModbusClient` — talk to a PLC
+- `DevicePool<T>` — generic resource pool for any protocol-specific
+  client
 
-Implementation: `ReqwestHttpHost` — validates each request against the policy before making the call. Requests to disallowed hosts are rejected with `HttpError::HostNotAllowed`. Empty `allowed_hosts` denies all. `HttpPolicy::allow_all()` permits all hosts.
+These traits live in the host's own crates. The host wires them into
+actors the same way — `Arc<dyn KvStore>` captured by the factory closure.
+For Wasm and Lua actors, the host also needs to expose them through the
+language boundary; that's covered in [Host Extensibility](./host-extensibility.md).
 
-### `fuchsia-host-fs` — Filesystem (Future)
+## Why not include KV / config in the core?
 
-Filesystem access with path policy enforcement.
+We considered it. We chose not to, for two reasons:
 
-```rust
-pub struct FsPolicy {
-    pub allowed_paths: Vec<String>,
-}
+- **Different hosts want different shapes.** A KV store interface that
+  works for an embedded host (single-process, in-memory) is different
+  from one for a distributed host (Redis with TTLs and CAS). Picking one
+  in the core forces a wrong fit everywhere.
+- **The injection pattern doesn't need a centralized trait.** As long as
+  the host can hand `Arc<dyn SomeTrait>` to its actors, where the trait
+  is defined matters very little. Hosts can standardize on shared traits
+  among themselves if/when convergence emerges, without Fuchsia
+  pre-empting the shape.
 
-pub trait FsHost: Send + Sync {
-    fn read(&self, path: &str) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, FsError>> + Send + '_>>;
-    fn write(&self, path: &str, data: &[u8]) -> Pin<Box<dyn Future<Output = Result<(), FsError>> + Send + '_>>;
-}
-```
-
-## Capability Provisioning
-
-Capabilities are constructed **per-node**. Each node gets its own `Capabilities` instance with policies derived from its component manifest. Some backing resources are shared across the workflow, others are node-specific:
-
-| Capability | Scope | Why |
-|-----------|-------|-----|
-| KV | Workflow | Nodes communicate via shared state |
-| Config | Node | Each node has its own configuration values |
-| Log | Node | Different `node_id` for log correlation |
-| HTTP | Node | Each node declares its own `allowed_hosts` |
-
-The orchestrator constructs capabilities like this:
-
-```rust
-// Workflow-scoped (shared across nodes)
-let kv = Arc::new(Mutex::new(InMemoryKvStore::new()));
-
-// Per-node
-let caps = Capabilities {
-    kv: Arc::clone(&kv),
-    config: Arc::new(MapConfig::new(node_config)),
-    log: Arc::new(TracingLogHost::new(exec_id, node_id)),
-    http: Arc::new(ReqwestHttpHost::new(HttpPolicy {
-        allowed_hosts: manifest.allowed_hosts.clone(),
-    })),
-};
-```
-
-This keeps policy decisions in the orchestrator and enforcement in the shared capability implementations. Runtimes never make policy decisions.
+HTTP is special because it's *universal* (every IoT host wants outbound
+HTTP somewhere) and its trait shape is uncontroversial. KV isn't.

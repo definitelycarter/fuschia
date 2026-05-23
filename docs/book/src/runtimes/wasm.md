@@ -1,96 +1,172 @@
-# WebAssembly Runtime
+# WebAssembly Actors
 
-The WebAssembly runtime executes tasks as WASI Preview 2 components via [wasmtime](https://wasmtime.dev/). It is the most mature runtime backend.
+`fuchsia-actor-wasm` hosts WebAssembly components as Fuchsia actors. Each
+`WasmActor` wraps a compiled wasm component; per inbound message it
+creates a fresh `wasmtime::Store`, instantiates the component into it,
+calls the component's exported `task.execute(ctx, data)`, and emits the
+result.
 
-**Crate**: `fuchsia-task-runtime-wasm`
-
-## Why Wasmtime
-
-- Native Rust implementation
-- Best WIT/component model support
-- Developed by the Bytecode Alliance, which drives the WIT and component model specifications
-
-## `WasmExecutor`
-
-Implements `NodeExecutor`. Owns the wasmtime `Engine` and an internal component cache.
+## Anatomy
 
 ```rust
-let executor = WasmExecutor::new(WasmExecutorConfig::default())?;
-
-let output = executor.execute(&wasm_bytes, capabilities, input).await?;
-```
-
-### Internal Architecture
-
-| Concern | How |
-|---------|-----|
-| Engine | Single `wasmtime::Engine` created at construction, shared across all executions |
-| Compilation cache | `RwLock<HashMap<u64, Component>>` keyed by byte hash. Compiled once, reused. |
-| Instance isolation | Fresh `Store` + `Instance` per `execute()` call. No wasm memory shared between calls. |
-| Host capabilities | `WasmTaskState` holds `Arc` clones of `Capabilities`. WIT `Host` trait impls delegate to these. |
-
-### Execution Flow
-
-1. **Compile or cache** — hash the bytes, check cache, compile `Component` if miss
-2. **Create fresh store** — `WasmTaskState::from_capabilities(&capabilities)` + `Store::new()`
-3. **Link imports** — WASI imports + fuchsia host imports (kv, config, log)
-4. **Instantiate** — `TaskComponent::instantiate_async()`
-5. **Call** — `instance.fuchsia_task_task().call_execute()`
-6. **Return** — parse JSON output into `TaskOutput`
-
-## Host Capability Wiring
-
-WIT imports map to shared host capability implementations via thin glue in `WasmTaskState`:
-
-| WIT Import | Capability | Glue |
-|------------|-----------|------|
-| `fuchsia:kv/kv` | `Arc<Mutex<dyn KvStore>>` | `futures::executor::block_on(kv.lock().await.get())` |
-| `fuchsia:config/config` | `Arc<dyn ConfigHost>` | `self.config.get(&key)` |
-| `fuchsia:log/log` | `Arc<dyn LogHost>` | `self.log.log(level, &message)` |
-
-The `WasmTaskState` struct holds `Arc` clones of the shared capabilities. Each WIT host trait impl is a few lines that delegate to the corresponding capability.
-
-## WIT Worlds
-
-Components implement the `task-component` world:
-
-### task-component
-
-```wit
-world task-component {
-    include platform;
-    export fuchsia:task/task@0.1.0;
+pub struct WasmActor<H: WasmHost> {
+    engine: Engine,                    // shared, cheap to clone (Arc)
+    component: Component,              // compiled, cheap to clone (Arc)
+    linker: Arc<Linker<H::State>>,     // built once at build() time
+    host: Arc<H>,                      // shared
+    epoch_deadline: u64,
 }
 ```
 
-### platform (shared imports)
+`WasmActor: Clone` is cheap — every field is either `Arc`-backed
+internally or wrapped in `Arc`. That matters because the
+`ActorRegistry` factory closure clones the actor for each node.
 
-```wit
-world platform {
-    import fuchsia:kv/kv;
-    import fuchsia:config/config;
-    import fuchsia:log/log;
-}
-```
-
-## Timeout Enforcement
-
-Uses wasmtime's epoch-based interruption:
-
-1. Engine configured with `epoch_interruption(true)`
-2. Store gets `set_epoch_deadline(N)` before calling wasm
-3. Background task increments engine epoch after timeout duration
-4. Wasm traps with `EpochInterruption` if still running
-
-## Configuration
+## Builder
 
 ```rust
-pub struct WasmExecutorConfig {
-    pub epoch_interruption: bool,     // default: true
-    pub default_epoch_deadline: u64,  // default: u64::MAX
+use fuchsia_actor_wasm::{WasmActor, DefaultHost};
+use fuchsia_capabilities::http::{ReqwestHttp, AllowedHosts};
+
+let engine = build_wasmtime_engine();  // shared across all actors
+let http = Arc::new(ReqwestHttp::new(AllowedHosts::new(["api.example.com"])));
+let host = DefaultHost::new(http);
+
+let actor = WasmActor::builder(engine, host)
+    .component_from_path("plugins/temp-mapper.wasm")
+    .epoch_deadline(1_000_000)
+    .build()?;
+```
+
+The builder takes three things:
+
+- An `Engine` (one per process is typical; `Engine::clone` is an `Arc`
+  bump)
+- A `WasmHost` — `DefaultHost` for the canonical world, or a custom host
+  for richer capabilities (see [Host Extensibility](../architecture/host-extensibility.md))
+- A component source — `component(Component)`, `component_from_path(path)`,
+  or `component_from_bytes(Vec<u8>)`
+
+Build the engine with:
+
+```rust
+let mut config = wasmtime::Config::new();
+config.async_support(true);
+config.wasm_component_model(true);
+let engine = wasmtime::Engine::new(&config)?;
+```
+
+`build()` does the expensive setup *once* — compiles the component if
+needed, then constructs the `Linker` against the host's
+`add_to_linker`. Per-message dispatch reuses this `Linker` for every
+instantiation, so the wiring cost is paid up-front, not per call.
+
+## The contract
+
+Components built against the canonical `actor-component` world export the
+`fuchsia:task/task` interface:
+
+```wit
+interface task {
+  record context {
+    execution-id: string,
+    node-id: string,
+    task-id: string,
+  }
+
+  record output {
+    data: string,
+  }
+
+  execute: func(ctx: context, data: string) -> result<output, string>;
 }
 ```
 
-## Async Execution
+Inputs and outputs are JSON-serialized strings — the actor handles the
+marshalling. Components built with `wit-bindgen` (e.g., via
+`cargo-component`) end up writing something like:
 
-The WebAssembly component model doesn't have native async yet. WASIp3 will add `stream` and `future` types. Until then, wasm calls are run on tokio's async runtime with wasmtime's async support enabled.
+```rust
+impl exports::fuchsia::task::task::Guest for MyComponent {
+  fn execute(
+    ctx: exports::fuchsia::task::task::Context,
+    data: String,
+  ) -> Result<exports::fuchsia::task::task::Output, String> {
+    fuchsia::log::log::log(
+      fuchsia::log::log::Level::Info,
+      &format!("executing in node {}", ctx.node_id),
+    );
+
+    // ... do work on `data` (parse JSON, transform, etc.) ...
+
+    Ok(exports::fuchsia::task::task::Output {
+      data: serde_json::to_string(&result).unwrap(),
+    })
+  }
+}
+```
+
+The `actor-component` world also imports `fuchsia:log/log` and
+`fuchsia:http/outbound`, both of which `DefaultHost` provides.
+
+## Per-message lifecycle
+
+For each message that arrives on the actor's inbox:
+
+1. `Store<H::State>` is created fresh via `host.fresh_state()`.
+2. The component is instantiated into the store via the pre-built
+   `Linker`. Wasm memory is brand new — no state leaks between messages.
+3. The actor serializes the inbox `Value` to JSON.
+4. `task.execute` is invoked. The component runs.
+5. The returned string is parsed back to JSON and emitted to downstream.
+
+If anything fails — instantiation, the component traps, the component
+returns an `Err(...)` from `execute`, output JSON is invalid — the
+actor's `run` loop returns `ActorError::Other`, the spawned task ends,
+and `WorkflowHandle::join()` will surface it in that actor's slot.
+
+## What `DefaultHost` gives you
+
+The off-the-shelf `DefaultHost` targets the canonical
+`fuchsia:platform/actor-component` world. It satisfies:
+
+- `fuchsia:log/log` — routes calls to `tracing` under target
+  `"wasm.component"`. The actor's tokio task is already wrapped in a span
+  carrying the `node` id, so log events automatically pick up context.
+- `fuchsia:http/outbound` — delegates to the injected `HttpClient`.
+  Sync-to-async bridging is done via `futures::executor::block_on`
+  (a known wart; see the [Capabilities](../architecture/host-capabilities.md)
+  page).
+
+For custom capabilities (MQTT, BLE, anything domain-specific), implement
+your own `WasmHost` — see [Host Extensibility](../architecture/host-extensibility.md).
+
+## Building test components
+
+The integration test for `fuchsia-actor-wasm` needs a compiled component
+on disk. Build it with [`cargo-component`]:
+
+```bash
+cd test-components/test-actor-component
+cargo component build --release
+```
+
+This produces `target/wasm32-wasip1/release/test_actor_component.wasm`,
+which the test loads via `component_from_path`.
+
+[`cargo-component`]: https://github.com/bytecodealliance/cargo-component
+
+## Performance notes
+
+- **Component compilation is the expensive step.** Done once at
+  `builder.build()` time. Per-message cost is dominated by
+  instantiation + wasm execution.
+- **Linker is built once** at `build()` and reused across all
+  instantiations. (The legacy task runtime rebuilt the linker per call —
+  that overhead is gone.)
+- **`Engine::clone`** is an `Arc` bump; one engine for the whole process
+  is the recommended shape.
+- **No component caching across actors.** Each `WasmActor` instance
+  holds its own `Component`. If you want shared compilation across many
+  registered actor names, compile once and pass the `Component` directly
+  into multiple builders.
