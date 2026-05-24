@@ -71,15 +71,10 @@ Components built against the canonical `actor-component` world export the
 
 ```wit
 interface types {
-  variant payload-value {
-    json(string),
-    binary(list<u8>),
-    empty,
-  }
-
   record payload {
     %type: string,
-    value: payload-value,
+    correlation-id: option<string>,
+    value: list<u8>,
   }
 }
 
@@ -105,11 +100,11 @@ interface emit {
 
 All three lifecycle exports are required. Stateless components implement
 `setup` and `teardown` as no-ops returning `Ok(())`. Inbound messages are
-typed `payload` values: a `%type` discriminator and a `payload-value`
-variant (`json(string)`, `binary(list<u8>)`, or `empty`). Outbound
-emissions flow through the host-imported `emit.send`, not through
-`handle`'s return value — `handle` returns `Ok(())` once it's done
-processing.
+`payload` values: a `%type` discriminator, an optional `correlation-id`
+for tracing, and raw bytes in `value` (encoding convention is set by
+`%type`). Outbound emissions flow through the host-imported `emit.send`,
+not through `handle`'s return value — `handle` returns `Ok(())` once it's
+done processing.
 
 A component built with `wit-bindgen` (e.g., via `cargo-component`) ends up
 writing something like:
@@ -126,14 +121,13 @@ impl exports::fuchsia::actor::actor::Guest for MyComponent {
     ctx: exports::fuchsia::actor::actor::Context,
     msg: fuchsia::actor::types::Payload,
   ) -> Result<(), String> {
-    // msg.type_ is the event discriminator; msg.value carries the data
-    let json_str = match msg.value {
-      fuchsia::actor::types::PayloadValue::Json(s) => s,
-      _ => "null".to_string(),
-    };
+    // msg.type_ is the event discriminator; msg.value is raw bytes
+    // encoding is established by convention on msg.type_
+    let output = transform(&msg.value);
     fuchsia::actor::emit::send(&fuchsia::actor::types::Payload {
       type_: "result".to_string(),
-      value: fuchsia::actor::types::PayloadValue::Json(json_str),
+      correlation_id: msg.correlation_id,
+      value: output,
     })
   }
 

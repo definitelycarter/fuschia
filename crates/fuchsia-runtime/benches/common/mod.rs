@@ -117,5 +117,5 @@ pub fn fan_out(width: usize) -> Graph {
 }
 
 pub fn bench_msg(i: u64) -> Message {
-  Message::json("bench", serde_json::json!(i))
+  Message::with_type("bench").json(serde_json::json!(i))
 }

@@ -88,7 +88,7 @@ async fn lua_actor_runs_inline_script_end_to_end() {
   let handle = orch.start(&graph).expect("start workflow");
 
   handle
-    .send(Message::json("test", json!(42)))
+    .send(Message::with_type("test").json(json!(42)))
     .await
     .expect("send input");
 

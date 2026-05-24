@@ -11,14 +11,51 @@ pub enum MessageValue {
 #[derive(Clone, Debug)]
 pub struct Message {
   pub type_: String,
+  pub correlation_id: Option<String>,
   pub value: MessageValue,
 }
 
+pub struct MessageBuilder {
+  type_: String,
+  correlation_id: Option<String>,
+}
+
 impl Message {
-  pub fn json(type_: impl Into<String>, value: serde_json::Value) -> Self {
-    Self {
+  pub fn with_type(type_: impl Into<String>) -> MessageBuilder {
+    MessageBuilder {
       type_: type_.into(),
+      correlation_id: None,
+    }
+  }
+}
+
+impl MessageBuilder {
+  pub fn with_correlation_id(mut self, id: impl Into<String>) -> Self {
+    self.correlation_id = Some(id.into());
+    self
+  }
+
+  pub fn json(self, value: serde_json::Value) -> Message {
+    Message {
+      type_: self.type_,
+      correlation_id: self.correlation_id,
       value: MessageValue::Json(value),
+    }
+  }
+
+  pub fn binary(self, bytes: Vec<u8>) -> Message {
+    Message {
+      type_: self.type_,
+      correlation_id: self.correlation_id,
+      value: MessageValue::Binary(bytes),
+    }
+  }
+
+  pub fn empty(self) -> Message {
+    Message {
+      type_: self.type_,
+      correlation_id: self.correlation_id,
+      value: MessageValue::Empty,
     }
   }
 }

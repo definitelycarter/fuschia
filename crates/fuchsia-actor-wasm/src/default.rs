@@ -21,7 +21,7 @@ wasmtime::component::bindgen!({
 });
 
 use exports::fuchsia::actor::actor::Context as WitContext;
-use fuchsia::actor::types::{Payload, PayloadValue};
+use fuchsia::actor::types::Payload;
 
 /// Per-`Store` state for [`DefaultHost`]. Holds the `WasiCtx`, the HTTP
 /// client, and the downstream `Emitter` so the `emit` import callback can
@@ -213,25 +213,19 @@ fn wit_context(ctx: &Context) -> WitContext {
 fn to_payload(msg: &Message) -> Payload {
   Payload {
     type_: msg.type_.clone(),
+    correlation_id: msg.correlation_id.clone(),
     value: match &msg.value {
-      MessageValue::Json(v) => PayloadValue::Json(v.to_string()),
-      MessageValue::Binary(b) => PayloadValue::Binary(b.clone()),
-      MessageValue::Empty => PayloadValue::Empty,
+      MessageValue::Json(v) => serde_json::to_vec(v).unwrap_or_default(),
+      MessageValue::Binary(b) => b.clone(),
+      MessageValue::Empty => vec![],
     },
   }
 }
 
 fn from_payload(p: Payload) -> Result<Message, String> {
-  let value = match p.value {
-    PayloadValue::Json(s) => {
-      let v = serde_json::from_str(&s).map_err(|e| format!("emit: invalid JSON: {e}"))?;
-      MessageValue::Json(v)
-    }
-    PayloadValue::Binary(b) => MessageValue::Binary(b),
-    PayloadValue::Empty => MessageValue::Empty,
-  };
   Ok(Message {
     type_: p.type_,
-    value,
+    correlation_id: p.correlation_id,
+    value: MessageValue::Binary(p.value),
   })
 }

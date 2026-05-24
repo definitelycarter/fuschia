@@ -29,20 +29,16 @@ impl exports::fuchsia::actor::actor::Guest for TestActor {
       ),
     );
 
-    let echoed_data = match &msg.value {
-      fuchsia::actor::types::PayloadValue::Json(s) => s.clone(),
-      fuchsia::actor::types::PayloadValue::Binary(_) => "\"binary\"".to_string(),
-      fuchsia::actor::types::PayloadValue::Empty => "null".to_string(),
-    };
-
+    let echoed_str = String::from_utf8_lossy(&msg.value).into_owned();
     let out_json = format!(
       r#"{{"echoed": {}, "node": "{}"}}"#,
-      echoed_data, ctx.node_id
+      echoed_str, ctx.node_id
     );
 
     fuchsia::actor::emit::send(&fuchsia::actor::types::Payload {
       type_: "echo".to_string(),
-      value: fuchsia::actor::types::PayloadValue::Json(out_json),
+      correlation_id: msg.correlation_id,
+      value: out_json.into_bytes(),
     })
   }
 

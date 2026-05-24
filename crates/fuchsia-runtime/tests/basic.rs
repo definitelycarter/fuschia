@@ -37,7 +37,7 @@ impl Actor for Doubler {
               Some(msg) => {
                   if let MessageValue::Json(Value::Number(n)) = &msg.value {
                       let d = n.as_f64().unwrap_or(0.0) * 2.0;
-                      emit.send(Message::json("doubled", json!(d))).await?;
+                      emit.send(Message::with_type("doubled").json(json!(d))).await?;
                   }
               }
               None => return Ok(()),
@@ -160,9 +160,12 @@ async fn passthrough_smoke() {
   let orchestrator = Orchestrator::new(Arc::new(registry));
   let handle = orchestrator.start(&graph).unwrap();
 
-  handle.send(Message::json("test", json!(42))).await.unwrap();
   handle
-    .send(Message::json("test", json!("hello")))
+    .send(Message::with_type("test").json(json!(42)))
+    .await
+    .unwrap();
+  handle
+    .send(Message::with_type("test").json(json!("hello")))
     .await
     .unwrap();
 
@@ -193,8 +196,14 @@ async fn transform_chain() {
   let orchestrator = Orchestrator::new(Arc::new(registry));
   let handle = orchestrator.start(&graph).unwrap();
 
-  handle.send(Message::json("test", json!(5))).await.unwrap();
-  handle.send(Message::json("test", json!(3))).await.unwrap();
+  handle
+    .send(Message::with_type("test").json(json!(5)))
+    .await
+    .unwrap();
+  handle
+    .send(Message::with_type("test").json(json!(3)))
+    .await
+    .unwrap();
 
   let results = handle.join().await;
   assert_all_ok(&results);
@@ -234,7 +243,10 @@ async fn fan_out() {
   let orchestrator = Orchestrator::new(Arc::new(registry));
   let handle = orchestrator.start(&graph).unwrap();
 
-  handle.send(Message::json("test", json!(7))).await.unwrap();
+  handle
+    .send(Message::with_type("test").json(json!(7)))
+    .await
+    .unwrap();
 
   let results = handle.join().await;
   assert_all_ok(&results);
@@ -267,8 +279,14 @@ async fn fan_in_merge() {
   let orchestrator = Orchestrator::new(Arc::new(registry));
   let handle = orchestrator.start(&graph).unwrap();
 
-  handle.send(Message::json("test", json!(1))).await.unwrap();
-  handle.send(Message::json("test", json!(2))).await.unwrap();
+  handle
+    .send(Message::with_type("test").json(json!(1)))
+    .await
+    .unwrap();
+  handle
+    .send(Message::with_type("test").json(json!(2)))
+    .await
+    .unwrap();
 
   let results = handle.join().await;
   assert_all_ok(&results);
@@ -304,12 +322,24 @@ async fn debounce_collapses_burst() {
   let orchestrator = Orchestrator::new(Arc::new(registry));
   let handle = orchestrator.start(&graph).unwrap();
 
-  handle.send(Message::json("test", json!(1))).await.unwrap();
-  handle.send(Message::json("test", json!(2))).await.unwrap();
-  handle.send(Message::json("test", json!(3))).await.unwrap();
+  handle
+    .send(Message::with_type("test").json(json!(1)))
+    .await
+    .unwrap();
+  handle
+    .send(Message::with_type("test").json(json!(2)))
+    .await
+    .unwrap();
+  handle
+    .send(Message::with_type("test").json(json!(3)))
+    .await
+    .unwrap();
   tokio::time::sleep(Duration::from_millis(120)).await;
 
-  handle.send(Message::json("test", json!(99))).await.unwrap();
+  handle
+    .send(Message::with_type("test").json(json!(99)))
+    .await
+    .unwrap();
   tokio::time::sleep(Duration::from_millis(120)).await;
 
   let results = handle.join().await;
@@ -338,7 +368,10 @@ async fn cancellation_exits_cleanly() {
   let orchestrator = Orchestrator::new(Arc::new(registry));
   let handle = orchestrator.start(&graph).unwrap();
 
-  handle.send(Message::json("test", json!(1))).await.unwrap();
+  handle
+    .send(Message::with_type("test").json(json!(1)))
+    .await
+    .unwrap();
   tokio::time::sleep(Duration::from_millis(20)).await;
   handle.cancel();
 

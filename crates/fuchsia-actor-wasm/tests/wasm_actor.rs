@@ -102,7 +102,7 @@ async fn wasm_actor_runs_test_component_end_to_end() {
   let handle = orch.start(&graph).expect("start workflow");
 
   handle
-    .send(Message::json("test", json!(42)))
+    .send(Message::with_type("test").json(json!(42)))
     .await
     .expect("send input");
 
@@ -114,10 +114,11 @@ async fn wasm_actor_runs_test_component_end_to_end() {
   let recorded = out.lock().unwrap();
   assert_eq!(recorded.len(), 1, "expected one output, got {recorded:?}");
 
-  // test-actor-component echoes back: {"echoed": <json>, "node": "<id>"}
-  let MessageValue::Json(v) = &recorded[0].value else {
-    panic!("expected JSON message");
+  // test-actor-component echoes back bytes: {"echoed": <json>, "node": "<id>"}
+  let MessageValue::Binary(bytes) = &recorded[0].value else {
+    panic!("expected binary message, got {:?}", recorded[0].value);
   };
+  let v: serde_json::Value = serde_json::from_slice(bytes).expect("valid JSON from component");
   assert_eq!(v["echoed"], json!(42));
   assert_eq!(v["node"], json!("wasm"));
 }

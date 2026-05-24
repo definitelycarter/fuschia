@@ -112,7 +112,11 @@ fn register_emit(lua: &mlua::Lua, emitter: Emitter) -> mlua::Result<()> {
     } else {
       MessageValue::Empty
     };
-    let message = Message { type_, value };
+    let message = Message {
+      type_,
+      correlation_id: None,
+      value,
+    };
     futures::executor::block_on(emitter.send(message))
       .map_err(|_| mlua::Error::external("channel closed".to_string()))?;
     Ok(())

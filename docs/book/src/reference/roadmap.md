@@ -39,6 +39,7 @@ when work lands (no strikethrough).
 |-----|----------|
 | `emit` and `http.send` use `futures::executor::block_on` from sync Lua callbacks; works but unprincipled in a tokio context | Medium |
 | Cancellation is checked between `handle` calls, not during; long-running Lua callbacks cannot be interrupted mid-flight | Medium |
+| `correlation_id` is not exposed to Lua scripts: `handle(ctx, msg)` omits it from the msg table, and `emit({...})` always sets it to `None` | Low |
 
 ### `fuchsia-capabilities`
 
